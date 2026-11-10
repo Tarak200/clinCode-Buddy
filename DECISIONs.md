@@ -38,9 +38,9 @@
   - Fine-tuning on dev notes - not enough data (60 notes)
 - **Results** 
   - Slice A (n=60)
-  - Top-1 accuracy: 0.167
-  - Top-3 accuracy: 0.267
-  - Points: 15.0 / 75
+  - Top-1 accuracy: 0.15
+  - Top-3 accuracy: 0.25
+  - Points: 13.7.0 / 75
   - Missing predictions: 0
   - Invalid codes: 0
   - Duplicate IDs: 0
@@ -58,5 +58,3 @@
 - **Decision:** To create the embeddings of mms-2026.json file
 - **Reasoning:**
   - not to take more time when doing it afterwards
-
-
