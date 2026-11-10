@@ -58,10 +58,10 @@
 - **Reasoning:**
   - not to take more time when doing it afterwards.
 
-  ## Decision 05: Implement hybrid retriever (semantic + lexical)
+## Decision 05: Implement hybrid retriever (semantic + lexical)
 
-- **Date/time:** 10-Nov-2026, 15:50 IST
-- **Commit:** `TBD`
+- **Date/time:** 10-Nov-2026, 21:40 IST
+- **Commit:** `Done`
 - **Decision:** Create hybrid index combining semantic (70%) and BM25 (30%) scoring. Each approach has complementary strengths.
 - **Reasoning:**
   - Semantic: Captures meaning, handles synonyms and abbreviations
@@ -85,4 +85,16 @@
   - Duplicate IDs: 0
   - **Score: 14.6 / 75**
 
-- **Rationale** The improvement is only marginal and the results are still bad, have to think about the data preprocessing and other 
+- **Rationale** The improvement is only marginal and the results are still bad, have to think about the data preprocessing and other. 
+
+## Decision 06: Diagnosis of the explored methods
+
+- **Date/time:** 10-Nov-2026, 21:42 IST
+- **Commit:** `TBD`
+- **Decision:** About 35% of notes never reach the top-50 (retrieval), and another ~37% are in the top-50 but not the top-3 (ranking). Neither a better ranker nor a better retriever alone gets past ~65%.
+- **Reasoning:**
+- The match between the title and description is not enough. Both the retriever and ranker are not working much. so, have to work on both mechanisms.
+
+
+
+
