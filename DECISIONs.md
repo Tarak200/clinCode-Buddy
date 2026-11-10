@@ -95,6 +95,39 @@
 - **Reasoning:**
 - The match between the title and description is not enough. Both the retriever and ranker are not working much. so, have to work on both mechanisms.
 
+## Decision 07: RRF, assessment extraction, chapter prior, family metric
+
+- **Date/time:** 10-Nov-2026, IST
+- **Commit:** `TBD`
+- **Decision:** Replace the 0.7/0.3 score mix in `HybridIndex` with reciprocal rank fusion (k=60) and add three no-key changes:
+  - **RRF** (`src/retrieval/fusion.py`): fuses one ranked list per (query, retriever). Zero-score BM25 padding is dropped before fusion, since it is alphabetical filler and not evidence.
+  - **Assessment extraction** (`src/retrieval/extract.py`): `A:`/`Dx`/`Imp:`/`Assessment:` for typed and short notes, the doctor's diagnostic sentence for transcripts, negated clauses ("malaria excluded") removed. The assessment is an *extra* query (weight 2); the full note is always kept as a fallback. Found in 58/60 dev notes.
+  - **Chapter prior** (`src/retrieval/priors.py`): soft multipliers (0.85-0.95) on chapters 21-26, applied only if a disease-chapter code is in the fused top-10. It is never a filter, because gold can be in ch. 24 (`QA42.0` in dev) and the hidden set covers other chapters.
+- **Reasoning:** Cosine scores (mapped from [-1,1]) and max-normalised BM25 are not on comparable scales; rank fusion needs no calibration. Most of the note is noise around a one-line diagnosis, and symptom/injury codes filled the top-3.
+- **Results (60 dev notes, hybrid, official `score.py`):**
+
+| Variant | R@1 | R@3 | R@10 | R@50 | Retrieval fails | Top-3 slots in ch. 21-26 |
+|---|---|---|---|---|---|---|
+| Old score-mix hybrid | .133 | .283 | .533 | .650 | 21 | n/a |
+| RRF only | .217 | .350 | .500 | .750 | 15 | .372 |
+| + assessment | .250 | .433 | .567 | .800 | 12 | .222 |
+| + prior only (no assessment) | .233 | .383 | .567 | .750 | 15 | .239 |
+| **RRF + assessment + prior (default)** | **.267** | **.483** | **.600** | **.800** | **12** | **.144** |
+
+  - Score **25.4 / 75** (top-1 .267, top-3 .483), 0 missing / invalid / duplicate.
+  - Sensitivity (assessment weight 1-3, prior strength 0-1.5x, RRF k 20-100): score stays within 23-26, i.e. within +-1 note, so defaults were left at the standard values rather than tuned to 60 notes.
+  - Truncation question answered: only 5/60 notes exceed 256 word-pieces, so truncation is not a main cause.
+- **Limits:** dev has no injury/symptom gold, so the prior's cost on those chapters is untested (hence the mild, guarded design). 12 notes still never reach the top-50 (vocabulary: next is the LLM extraction).
+
+- **Alternatives considered:** 
+  - API-based ranking (Claude/GPT) - expensive and limited to ~$1 budget
+
+  **Conclusion:**
+  We can use the RRF + priors + assessment combination when we don't have any API available as a fallback
+
+
+
+
 
 
 

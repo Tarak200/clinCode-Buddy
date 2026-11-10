@@ -1,13 +1,20 @@
-"""Hybrid retriever combining semantic and BM25 approaches."""
+"""Hybrid retriever: BM25 + dense retrieval fused with reciprocal rank fusion (RRF)."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
-import numpy as np
-from typing import Optional
 import json
+from pathlib import Path
+from typing import Optional
 
-from src.retrieval.semantic import SemanticIndex as SemanticIndexBase
+from src.retrieval.extract import extract_assessment
+from src.retrieval.fusion import DEFAULT_RRF_K, rank_by_score, reciprocal_rank_fusion
 from src.retrieval.lexical import LexicalIndex
+from src.retrieval.priors import (
+    DEFAULT_CHAPTER_FACTORS,
+    DEFAULT_GUARD_RANK,
+    apply_chapter_prior,
+)
+from src.retrieval.semantic import SemanticIndex as SemanticIndexBase
 
 
 @dataclass(frozen=True)
@@ -18,38 +25,67 @@ class Candidate:
 
 
 class HybridIndex:
-    """Combines semantic and lexical matching for better retrieval."""
+    """Fuse lexical and semantic rankings of the whole note and of its assessment.
+
+    Each (query, retriever) pair yields one ranked list. The lists are combined
+    with RRF, so BM25 and cosine scores never have to share a scale, and the
+    chapter prior is applied to the fused score.
+    """
 
     def __init__(
         self,
         records: list[dict[str, object]],
         embedder=None,
         embeddings_cache_path: Optional[Path] = None,
-        semantic_weight: float = 0.7,
-        lexical_weight: float = 0.3,
+        semantic_weight: float = 1.0,
+        lexical_weight: float = 1.0,
+        assessment_weight: float = 2.0,
+        rrf_k: int = DEFAULT_RRF_K,
+        depth: int = 100,
+        use_assessment: bool = True,
+        chapter_factors: Optional[Mapping[str, float]] = DEFAULT_CHAPTER_FACTORS,
+        guard_rank: int = DEFAULT_GUARD_RANK,
     ) -> None:
         """
-        Initialize hybrid index.
-        
         Args:
             records: ICD catalogue records
             embedder: SentenceTransformer embedder
             embeddings_cache_path: Path to cache embeddings
-            semantic_weight: Weight for semantic scores (0-1)
-            lexical_weight: Weight for lexical scores (0-1)
+            semantic_weight: RRF weight of the dense lists (relative to lexical)
+            lexical_weight: RRF weight of the BM25 lists
+            assessment_weight: multiplier on the lists built from the extracted
+                assessment; the full-note lists always keep weight 1
+            rrf_k: RRF constant (larger flattens the benefit of top ranks)
+            depth: how many results each list contributes before fusion
+            use_assessment: also query with the extracted assessment text
+            chapter_factors: per-chapter score multipliers, or None to disable
+            guard_rank: apply the chapter prior only if a disease code is in
+                the top `guard_rank` of the fused ranking
         """
-        # Build both indices
+        if depth < 1:
+            raise ValueError("The fusion depth must be at least 1")
+        if semantic_weight < 0 or lexical_weight < 0 or assessment_weight < 0:
+            raise ValueError("Fusion weights must be non-negative")
+        if semantic_weight + lexical_weight == 0:
+            raise ValueError("At least one retriever must have a positive weight")
+
         self._semantic_index = SemanticIndexBase(
             records,
             embedder=embedder,
             embeddings_cache_path=embeddings_cache_path,
         )
         self._lexical_index = LexicalIndex(records)
-        
-        # Normalize weights
-        total = semantic_weight + lexical_weight
-        self._semantic_weight = semantic_weight / total
-        self._lexical_weight = lexical_weight / total
+        self._chapters = {
+            str(record["code"]): str(record.get("chapter", "")) for record in records
+        }
+        self._semantic_weight = semantic_weight
+        self._lexical_weight = lexical_weight
+        self._assessment_weight = assessment_weight
+        self._rrf_k = rrf_k
+        self._depth = depth
+        self._use_assessment = use_assessment
+        self._chapter_factors = chapter_factors
+        self._guard_rank = guard_rank
 
     @classmethod
     def from_file(
@@ -57,8 +93,7 @@ class HybridIndex:
         path: Path,
         embedder=None,
         embeddings_cache_path: Optional[Path] = None,
-        semantic_weight: float = 0.7,
-        lexical_weight: float = 0.3,
+        **options,
     ) -> "HybridIndex":
         with path.open(encoding="utf-8") as file:
             records = json.load(file)
@@ -70,65 +105,53 @@ class HybridIndex:
             records,
             embedder=embedder,
             embeddings_cache_path=embeddings_cache_path,
-            semantic_weight=semantic_weight,
-            lexical_weight=lexical_weight,
+            **options,
         )
 
+    def _queries(self, text: str) -> list[tuple[str, float]]:
+        """Return (query text, weight) pairs; the full note is always included."""
+        queries = [(text, 1.0)]
+        if self._use_assessment and self._assessment_weight > 0:
+            assessment = extract_assessment(text)
+            if assessment and assessment.split() != text.split():
+                queries.append((assessment, self._assessment_weight))
+        return queries
+
     def search(self, text: str, limit: int = 50) -> list[Candidate]:
-        """Search using hybrid approach."""
+        """Search using reciprocal rank fusion over all query/retriever lists."""
         if limit < 1:
             raise ValueError("The candidate limit must be at least 1")
 
-        # Get results from both retrievers
-        semantic_results = self._semantic_index.search(text, limit=limit)
-        lexical_results = self._lexical_index.search(text, limit=limit)
-        
-        # Create score maps
-        # Normalize semantic scores to 0-1 range (they're already close to this)
-        semantic_scores = {
-            r.code: (r.score + 1.0) / 2.0  # Map from [-1, 1] to [0, 1]
-            for r in semantic_results
-        }
-        
-        # Lexical scores need normalization too
-        max_lexical_score = max((r.score for r in lexical_results), default=1.0)
-        lexical_scores = {
-            r.code: (r.score / max(max_lexical_score, 1e-8))
-            for r in lexical_results
-        }
-        
-        # Combine all codes seen
-        all_codes = set(semantic_scores.keys()) | set(lexical_scores.keys())
-        
-        # Compute hybrid scores
-        hybrid_scores = {}
-        code_titles = {}
-        
-        for code in all_codes:
-            sem_score = semantic_scores.get(code, 0.0)
-            lex_score = lexical_scores.get(code, 0.0)
-            hybrid_score = (
-                self._semantic_weight * sem_score +
-                self._lexical_weight * lex_score
+        depth = max(self._depth, limit)
+        rankings: list[list[str]] = []
+        weights: list[float] = []
+        titles: dict[str, str] = {}
+
+        for query, query_weight in self._queries(text):
+            semantic = self._semantic_index.search(query, limit=depth)
+            # BM25 pads its output with zero-score entries in code order;
+            # those carry no evidence and must not take part in rank fusion.
+            lexical = [
+                r for r in self._lexical_index.search(query, limit=depth) if r.score > 0
+            ]
+            for results, weight in (
+                (semantic, self._semantic_weight),
+                (lexical, self._lexical_weight),
+            ):
+                rankings.append([r.code for r in results])
+                weights.append(weight * query_weight)
+                titles.update((r.code, r.title) for r in results)
+
+        scores = reciprocal_rank_fusion(rankings, weights, k=self._rrf_k)
+        if self._chapter_factors:
+            scores = apply_chapter_prior(
+                scores,
+                self._chapters,
+                factors=self._chapter_factors,
+                guard_rank=self._guard_rank,
             )
-            hybrid_scores[code] = hybrid_score
-            
-            # Store title from whichever result has it
-            for r in semantic_results + lexical_results:
-                if r.code == code:
-                    code_titles[code] = r.title
-                    break
-        
-        # Sort by hybrid score
-        sorted_codes = sorted(hybrid_scores.items(), key=lambda x: (-x[1], x[0]))
-        
-        candidates = [
-            Candidate(
-                code=code,
-                title=code_titles.get(code, ""),
-                score=score,
-            )
-            for code, score in sorted_codes[:limit]
+
+        return [
+            Candidate(code=code, title=titles[code], score=score)
+            for code, score in rank_by_score(scores)[:limit]
         ]
-        
-        return candidates
