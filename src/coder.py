@@ -11,6 +11,7 @@ try:
 except ImportError:
     HAS_SENTENCE_TRANSFORMERS = False
 
+from src.retrieval.hybrid import HybridIndex
 from src.retrieval.lexical import LexicalIndex
 from src.retrieval.semantic import SemanticIndex
 
@@ -21,10 +22,13 @@ def run(
     catalogue_path: Path,
     use_lexical: bool = False,
     model_name: str = "all-MiniLM-L6-v2",
+    use_hybrid: bool = False,
 ) -> None:
     paths = [input_path.resolve(), output_path.resolve(), catalogue_path.resolve()]
     if len(set(paths)) != len(paths):
         raise ValueError("Input, output, and catalogue paths must differ")
+    if use_lexical and use_hybrid:
+        raise ValueError("Choose only one of --use-lexical and --hybrid")
 
     # Choose retriever
     if use_lexical:
@@ -35,15 +39,19 @@ def run(
         if not HAS_SENTENCE_TRANSFORMERS:
             raise ImportError("sentence-transformers is required for semantic retrieval. Install with: pip install sentence-transformers")
         
-        print(f"Using Semantic Retriever with model: {model_name}", file=sys.stderr)
+        print(
+            f"Using {'Hybrid' if use_hybrid else 'Semantic'} Retriever with model: {model_name}",
+            file=sys.stderr,
+        )
         embedder = SentenceTransformer(model_name)
         
         # Setup cache path for embeddings
         cache_dir = catalogue_path.parent / ".embeddings_cache"
         cache_file = cache_dir / f"{catalogue_path.stem}_{model_name.replace('/', '_')}.pkl"
         
-        print("Building semantic index...", file=sys.stderr)
-        index = SemanticIndex.from_file(
+        print("Building index...", file=sys.stderr)
+        index_class = HybridIndex if use_hybrid else SemanticIndex
+        index = index_class.from_file(
             catalogue_path,
             embedder=embedder,
             embeddings_cache_path=cache_file
@@ -111,6 +119,11 @@ def main() -> None:
         help="Use BM25 lexical baseline instead of semantic retrieval",
     )
     parser.add_argument(
+        "--hybrid",
+        action="store_true",
+        help="Use hybrid (semantic + BM25) retrieval",
+    )
+    parser.add_argument(
         "--model",
         type=str,
         default="all-MiniLM-L6-v2",
@@ -118,7 +131,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     try:
-        run(args.input, args.output, args.mms, args.use_lexical, args.model)
+        run(args.input, args.output, args.mms, args.use_lexical, args.model, args.hybrid)
     except (OSError, ValueError, ImportError) as error:
         parser.exit(1, f"error: {error}\n")
 

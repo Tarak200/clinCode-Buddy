@@ -41,14 +41,7 @@ class SemanticIndex:
                 raise ValueError(f"Duplicate catalogue code: {code}")
             seen_codes.add(code)
 
-            leaf = record.get("leaf", True)
-            if not isinstance(leaf, bool):
-                raise ValueError(f"Catalogue entry {code!r} has an invalid leaf flag")
-            if leaf:
-                self._documents.append((code, title))
-
-        if not self._documents:
-            raise ValueError("The MMS catalogue has no leaf entries")
+            self._documents.append((code, title))
 
         model_name = getattr(self._embedder, "model_name_or_path", None)
         if not isinstance(model_name, str):
@@ -109,9 +102,13 @@ class SemanticIndex:
                     )
 
         if self._embeddings is None and self._embedder:
-            embeddings_list = [
-                self._embedder.encode(title) for _, title in self._documents
-            ]
+            titles = [title for _, title in self._documents]
+            if hasattr(self._embedder, "get_sentence_embedding_dimension"):
+                embeddings_list = self._embedder.encode(
+                    titles, batch_size=64, convert_to_numpy=True
+                )
+            else:
+                embeddings_list = [self._embedder.encode(title) for title in titles]
             embeddings = np.asarray(embeddings_list)
             if (
                 embeddings.ndim != 2

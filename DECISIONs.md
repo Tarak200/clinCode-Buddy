@@ -33,18 +33,17 @@
   - all-MiniLM-L6-v2 is lightweight (22MB), fast (~50ms/note), and validates well on medical similarity tasks
   - Embeddings can be precomputed and cached, making inference fast for the 60-minute constraint
 - **Alternatives considered:** 
-  - Hybrid (Semantic + Lexical)
   - API-based ranking (Claude/GPT) - expensive and limited to ~$1 budget
   - Fine-tuning on dev notes - not enough data (60 notes)
 - **Results** 
   - Slice A (n=60)
   - Top-1 accuracy: 0.15
   - Top-3 accuracy: 0.25
-  - Points: 13.7.0 / 75
+  - Points: 13.7 / 75
   - Missing predictions: 0
   - Invalid codes: 0
   - Duplicate IDs: 0
-  - **Score: 15.0 / 75**
+  - **Score: 13.7 / 75**
 
 - **Trade-offs:** 
   - Adds dependency on sentence-transformers and torch
@@ -57,4 +56,33 @@
 - **Commit:** `TBD`
 - **Decision:** To create the embeddings of mms-2026.json file
 - **Reasoning:**
-  - not to take more time when doing it afterwards
+  - not to take more time when doing it afterwards.
+
+  ## Decision 05: Implement hybrid retriever (semantic + lexical)
+
+- **Date/time:** 10-Nov-2026, 15:50 IST
+- **Commit:** `TBD`
+- **Decision:** Create hybrid index combining semantic (70%) and BM25 (30%) scoring. Each approach has complementary strengths.
+- **Reasoning:**
+  - Semantic: Captures meaning, handles synonyms and abbreviations
+  - Lexical (BM25): Catches exact keyword matches, handles acronyms better
+  - Hybrid (70/30): Leverages both, with semantic as primary signal
+  - Example: "TB" (acronym) ranks higher with BM25, but semantic catches "tuberculosis" concept
+- **Expected improvement:** Additional 5-10% over pure semantic
+- **Implementation:** 
+  - Get top-50 from each retriever
+  - Normalize scores to [0, 1]
+  - Compute weighted combination: 0.7 × semantic + 0.3 × lexical
+  - Re-rank and return top-3
+
+-  **Results**
+  - Slice A (n=60)
+  - Top-1 accuracy: 0.167
+  - Top-3 accuracy: 0.250
+  - Points: 14.6 / 75
+  - Missing predictions: 0
+  - Invalid codes: 0
+  - Duplicate IDs: 0
+  - **Score: 14.6 / 75**
+
+- **Rationale** The improvement is only marginal and the results are still bad, have to think about the data preprocessing and other 
