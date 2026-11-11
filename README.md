@@ -61,6 +61,22 @@ python test_retrieval_comparison.py  # Compare BM25, Semantic, Hybrid
 python test_semantic_retriever.py    # Test semantic alone
 ```
 
+### Retrieval diagnostics
+
+```bash
+# Compare lexical, SapBERT semantic, and hybrid retrieval
+python -m misc.diagnose --semantic --hybrid
+
+# Compare against the previous MiniLM diagnostic
+python -m misc.diagnose --semantic --hybrid --model all-MiniLM-L6-v2
+```
+
+The diagnostic uses SapBERT's CLS embeddings by default; the production coder
+still uses MiniLM. SapBERT weights must be available locally or downloaded
+before running in an offline environment. Each model gets a separate catalogue
+embedding cache. Semantic and hybrid diagnostics configure PyTorch to use all
+logical CPU threads when creating embeddings and running inference.
+
 ## System Architecture
 
 ### Semantic Retrieval

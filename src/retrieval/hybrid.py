@@ -45,6 +45,7 @@ class HybridIndex:
         use_assessment: bool = True,
         chapter_factors: Optional[Mapping[str, float]] = DEFAULT_CHAPTER_FACTORS,
         guard_rank: int = DEFAULT_GUARD_RANK,
+        show_progress_bar: bool = False,
     ) -> None:
         """
         Args:
@@ -73,6 +74,7 @@ class HybridIndex:
             records,
             embedder=embedder,
             embeddings_cache_path=embeddings_cache_path,
+            show_progress_bar=show_progress_bar,
         )
         self._lexical_index = LexicalIndex(records)
         self._chapters = {

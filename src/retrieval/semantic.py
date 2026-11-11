@@ -21,7 +21,13 @@ class Candidate:
 class SemanticIndex:
     """Rank catalogue titles using semantic similarity with precomputed embeddings."""
 
-    def __init__(self, records: list[dict[str, object]], embedder=None, embeddings_cache_path: Optional[Path] = None) -> None:
+    def __init__(
+        self,
+        records: list[dict[str, object]],
+        embedder=None,
+        embeddings_cache_path: Optional[Path] = None,
+        show_progress_bar: bool = False,
+    ) -> None:
         if not records:
             raise ValueError("The MMS catalogue is empty")
 
@@ -90,6 +96,11 @@ class SemanticIndex:
                         and np.isfinite(cached_embeddings).all()
                     ):
                         self._embeddings = cached_embeddings
+                        if show_progress_bar:
+                            print(
+                                f"Loaded cached embeddings for {len(self._documents)} catalogue titles",
+                                flush=True,
+                            )
                     else:
                         warnings.warn(
                             f"Embeddings cache {embeddings_cache_path} has invalid data; recomputing",
@@ -104,10 +115,20 @@ class SemanticIndex:
         if self._embeddings is None and self._embedder:
             titles = [title for _, title in self._documents]
             if hasattr(self._embedder, "get_sentence_embedding_dimension"):
+                if show_progress_bar:
+                    print(
+                        f"Embedding {len(titles)} catalogue titles (batch size 64)...",
+                        flush=True,
+                    )
                 embeddings_list = self._embedder.encode(
-                    titles, batch_size=64, convert_to_numpy=True
+                    titles,
+                    batch_size=64,
+                    convert_to_numpy=True,
+                    show_progress_bar=show_progress_bar,
                 )
             else:
+                if show_progress_bar:
+                    print(f"Embedding {len(titles)} catalogue titles...", flush=True)
                 embeddings_list = [self._embedder.encode(title) for title in titles]
             embeddings = np.asarray(embeddings_list)
             if (
@@ -131,14 +152,25 @@ class SemanticIndex:
                     )
 
     @classmethod
-    def from_file(cls, path: Path, embedder=None, embeddings_cache_path: Optional[Path] = None) -> "SemanticIndex":
+    def from_file(
+        cls,
+        path: Path,
+        embedder=None,
+        embeddings_cache_path: Optional[Path] = None,
+        show_progress_bar: bool = False,
+    ) -> "SemanticIndex":
         with path.open(encoding="utf-8") as file:
             records = json.load(file)
         if not isinstance(records, list) or not all(
             isinstance(record, dict) for record in records
         ):
             raise ValueError("The MMS catalogue must be a JSON array of objects")
-        return cls(records, embedder=embedder, embeddings_cache_path=embeddings_cache_path)
+        return cls(
+            records,
+            embedder=embedder,
+            embeddings_cache_path=embeddings_cache_path,
+            show_progress_bar=show_progress_bar,
+        )
 
     def search(self, text: str, limit: int = 50) -> list[Candidate]:
         if limit < 1:

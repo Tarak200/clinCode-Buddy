@@ -123,8 +123,72 @@
   - API-based ranking (Claude/GPT) - expensive and limited to ~$1 budget
 
   **Conclusion:**
-  We can use the RRF + priors + assessment combination when we don't have any API available as a fallback
+  We can use the RRF + priors + assessment combination when we don't have any API available as a fallback. Still it has the 12 true retrieval failures and remaining problem is mostly ranking.
 
+## Decision 08: Usage of medical aware embedding model 
+
+- **Date/time:** 11-Nov-2026, 16:30 IST
+- **Commit:** `TBD`
+- **Decision:** Instead of using the `all-MiniLM-L6-v2` which don't have any medical knowledge, I choose to use the `SapBERT` model which has medical context. Intially used the `NeuML_biomedbert` model as it is ultra-light and fast but it is not able to capture the semantics of the diagnosis. so, `SapBERT` is the best option.
+- **Reasoning:** For `all-MiniLM-L6-v2` even the symptom is refering to a disease, it can't get the context while the `SapBERT` can.
+
+- **Diagnosis Results (60 dev notes, hybrid, official `score.py`):**
+
+- **Exact-code recall**
+
+| Retriever | Cohort (n) | R@1 | R@3 | R@10 | R@30 | R@50 |
+|---|---:|---:|---:|---:|---:|---:|
+| Lexical | All (60) | .083 | .150 | .300 | .450 | .517 |
+| Lexical | Ambient transcript (15) | .000 | .133 | .467 | .667 | .733 |
+| Lexical | Short consult (16) | .062 | .125 | .125 | .250 | .438 |
+| Lexical | Typed consult (29) | .138 | .172 | .310 | .448 | .448 |
+| Semantic | All (60) | .017 | .017 | .133 | .217 | .233 |
+| Semantic | Ambient transcript (15) | .000 | .000 | .133 | .333 | .333 |
+| Semantic | Short consult (16) | .000 | .000 | .188 | .250 | .250 |
+| Semantic | Typed consult (29) | .034 | .034 | .103 | .138 | .172 |
+| Hybrid | All (60) | .333 | .550 | .783 | .967 | 1.000 |
+| Hybrid | Ambient transcript (15) | .400 | .800 | .800 | 1.000 | 1.000 |
+| Hybrid | Short consult (16) | .375 | .500 | .750 | .875 | 1.000 |
+| Hybrid | Typed consult (29) | .276 | .448 | .793 | 1.000 | 1.000 |
+
+- **Family-level recall**
+
+| Retriever | Cohort (n) | R@1 | R@3 | R@10 | R@30 | R@50 |
+|---|---:|---:|---:|---:|---:|---:|
+| Lexical | All (60) | .100 | .233 | .450 | .567 | .650 |
+| Lexical | Ambient transcript (15) | .000 | .267 | .600 | .733 | .800 |
+| Lexical | Short consult (16) | .062 | .125 | .250 | .312 | .500 |
+| Lexical | Typed consult (29) | .172 | .276 | .483 | .621 | .655 |
+| Semantic | All (60) | .117 | .167 | .283 | .400 | .433 |
+| Semantic | Ambient transcript (15) | .200 | .200 | .333 | .400 | .400 |
+| Semantic | Short consult (16) | .000 | .062 | .250 | .438 | .438 |
+| Semantic | Typed consult (29) | .138 | .207 | .276 | .379 | .448 |
+| Hybrid | All (60) | .617 | .767 | .867 | .967 | 1.000 |
+| Hybrid | Ambient transcript (15) | .667 | .867 | .867 | 1.000 | 1.000 |
+| Hybrid | Short consult (16) | .562 | .688 | .812 | .875 | 1.000 |
+| Hybrid | Typed consult (29) | .621 | .759 | .897 | 1.000 | 1.000 |
+
+- **Diagnostics:** Lexical had 29 retrieval failures (gold absent from top-50) and 22 ranking failures (gold in top-50 but not top-3); semantic had 46 and 13, respectively; hybrid had 0 and 27. Family-only misses (correct disease family in top-3, wrong specificity) were 5, 9, and 13, respectively. Symptom/injury/context chapters (21-26) accounted for 99/180 lexical, 83/180 semantic, and 27/180 hybrid top-3 slots.
+
+- **Results (60 dev notes, hybrid-only retriever with SapBERT, `predictions\hybrid_only_sapbert_embedding_model.jsonl`, official `score.py`):**
+  - Slice A (n=60)
+  - Top-1 accuracy: 0.333
+  - Top-3 accuracy: 0.550
+  - Points: 30.4 / 75
+  - Missing predictions: 0
+  - Invalid codes: 0
+  - Duplicate IDs: 0
+  - **Score: 30.4 / 75**
+
+- **Observation** 
+The medical aware embedding model is working much better with 0 retrieval failures for R@50 and 96.7% retrieval success at R@30 and the backdrop is only for short type inputs. so, the main issue here is the reranking them. LLM can help here provided.
+
+- **Truncation:** 0/60 notes exceeded 512 tokens; mean fraction of each note seen by the encoder was 1.00.
+- **Conclusion:** Hybrid retrieval is the strongest of the three on this dev set: it retrieves a gold code into the top-50 for every note and reaches .550 exact-code R@3 / .767 family R@3. However, 27 notes with a gold code in the top-50 still miss the exact-code top-3, and 13 top-3 results identify the right disease family at the wrong specificity. Further work should focus on ranking and code specificity, not note truncation or retrieval coverage.
+
+- **Alternatives considered:** 
+  - API-based ranking (Claude/GPT) - expensive and limited to ~$1 budget
+  - First retrieving 50 and them 30 from the mms dataset to check how llm is helping
 
 
 
