@@ -39,14 +39,17 @@ This downloads the embedding model and precomputes all 50k+ ICD code embeddings,
 
 ```bash
 # Generate predictions on dev notes
-python src/coder.py data/dev_notes.jsonl predictions/predictions.jsonl
+python src/coder.py 'data/dev_notes.jsonl' 'predictions/20_predictions.jsonl'
 
 # Score predictions
-python score.py --gold data/dev_notes.jsonl \
-                --pred predictions/predictions.jsonl \
-                --mms data/mms-2026-01.json
+python score.py --gold 'data/dev_notes.jsonl' \
+                --pred 'predictions_dump/predictions.jsonl' \
+                --mms 'data/mms-2026-01.json'
 ```
 
+python -m src.coder 'data/dev_notes.jsonl' 'predictions_dump/20_predictions.jsonl' --hybrid
+
+python score.py --gold 'data\dev_notes.jsonl' --pred 'predictions_dump\20_predictions.jsonl' --mms 'data\mms-2026-01.json'
 ### Advanced Options
 
 ```bash

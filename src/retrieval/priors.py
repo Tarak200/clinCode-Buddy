@@ -12,12 +12,12 @@ from collections.abc import Mapping
 # Multipliers on the fused RRF score (1.0 = no change). With the default RRF
 # constant of 60, 0.9 moves a rank-1 hit to about rank 8.
 DEFAULT_CHAPTER_FACTORS: Mapping[str, float] = {
-    "21": 0.85,  # symptoms, signs and clinical findings
-    "22": 0.9,  # injury, poisoning and external-cause consequences
-    "23": 0.85,  # external causes of morbidity or mortality
-    "24": 0.95,  # factors influencing health status
-    "25": 0.85,  # codes for special purposes
-    "26": 0.85,  # traditional medicine conditions
+    "21": 0.70,  # symptoms, signs and clinical findings
+    "22": 0.75,  # injury, poisoning and external-cause consequences
+    "23": 0.70,  # external causes of morbidity or mortality
+    "24": 0.80,  # factors influencing health status
+    "25": 0.70,  # codes for special purposes
+    "26": 0.70,  # traditional medicine conditions
 }
 
 DEFAULT_GUARD_RANK = 10

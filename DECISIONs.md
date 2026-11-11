@@ -132,7 +132,7 @@
 - **Decision:** Instead of using the `all-MiniLM-L6-v2` which don't have any medical knowledge, I choose to use the `SapBERT` model which has medical context. Intially used the `NeuML_biomedbert` model as it is ultra-light and fast but it is not able to capture the semantics of the diagnosis. so, `SapBERT` is the best option.
 - **Reasoning:** For `all-MiniLM-L6-v2` even the symptom is refering to a disease, it can't get the context while the `SapBERT` can.
 
-- **Diagnosis Results (60 dev notes, hybrid, official `score.py`):**
+- **Diagnosis Results:**
 
 - **Exact-code recall**
 
@@ -170,7 +170,7 @@
 
 - **Diagnostics:** Lexical had 29 retrieval failures (gold absent from top-50) and 22 ranking failures (gold in top-50 but not top-3); semantic had 46 and 13, respectively; hybrid had 0 and 27. Family-only misses (correct disease family in top-3, wrong specificity) were 5, 9, and 13, respectively. Symptom/injury/context chapters (21-26) accounted for 99/180 lexical, 83/180 semantic, and 27/180 hybrid top-3 slots.
 
-- **Results (60 dev notes, hybrid-only retriever with SapBERT, `predictions\hybrid_only_sapbert_embedding_model.jsonl`, official `score.py`):**
+- **Results (60 dev notes, hybrid retriever with SapBERT, `predictions\hybrid_only_sapbert_embedding_model.jsonl`, official `score.py`):**
   - Slice A (n=60)
   - Top-1 accuracy: 0.333
   - Top-3 accuracy: 0.550
@@ -181,10 +181,31 @@
   - **Score: 30.4 / 75**
 
 - **Observation** 
-The medical aware embedding model is working much better with 0 retrieval failures for R@50 and 96.7% retrieval success at R@30 and the backdrop is only for short type inputs. so, the main issue here is the reranking them. LLM can help here provided.
+The medical aware embedding model is working much better with 0 retrieval failures for R@50 and 96.7% retrieval success at R@30 and the backdrop is only for short type inputs. so, the main issue here is the reranking them. LLM can help here provided. Symptom/injury/context chapters (21-26) accounted for 99/180 lexical, 83/180 semantic, and 27/180 hybrid top-3 slots. so, increasing penalty for the symptom chapters can help to give less weightage to these in top-3.
 
 - **Truncation:** 0/60 notes exceeded 512 tokens; mean fraction of each note seen by the encoder was 1.00.
 - **Conclusion:** Hybrid retrieval is the strongest of the three on this dev set: it retrieves a gold code into the top-50 for every note and reaches .550 exact-code R@3 / .767 family R@3. However, 27 notes with a gold code in the top-50 still miss the exact-code top-3, and 13 top-3 results identify the right disease family at the wrong specificity. Further work should focus on ranking and code specificity, not note truncation or retrieval coverage.
+
+- **Alternatives considered:** 
+  - changing factors in priors may help by giving very less weightage to chap 21-26
+  - API-based ranking (Claude/GPT) - expensive and limited to ~$1 budget
+  - First retrieving 50 and them 30 from the mms dataset to check how llm is helping
+
+## Decision 09: Optimizing penalty for chap 21-26 in priors
+
+- **Date/time:** 11-Nov-2026, 22:30 IST
+- **Commit:** `TBD`
+- **Decision:** optimize the default chapter factors so that top-3 contains specific disease codes instead of the symptom codes
+
+- **Results (60 dev notes, hybrid retriever with SapBERT, `predictions\hybrid_only_sapbert_embedding_model.jsonl`, official `score.py`):**
+  - Slice A (n=60)
+  - Top-1 accuracy: 0.350
+  - Top-3 accuracy: 0.567
+  - Points: 31.7 / 75
+  - Missing predictions: 0
+  - Invalid codes: 0
+  - Duplicate IDs: 0
+  - **Score: 31.7 / 75**
 
 - **Alternatives considered:** 
   - API-based ranking (Claude/GPT) - expensive and limited to ~$1 budget
