@@ -47,9 +47,11 @@ python score.py --gold 'data/dev_notes.jsonl' \
                 --mms 'data/mms-2026-01.json'
 ```
 
-python -m src.coder 'data/dev_notes.jsonl' 'predictions_dump/20_predictions.jsonl' --hybrid
+<!-- python -m src.coder 'data/dev_notes.jsonl' 'predictions/llm_run.jsonl'
 
-python score.py --gold 'data\dev_notes.jsonl' --pred 'predictions_dump\20_predictions.jsonl' --mms 'data\mms-2026-01.json'
+python score.py --gold 'data\dev_notes.jsonl' --pred 'predictions\llm_run.jsonl' --mms 'data\mms-2026-01.json' -->
+
+
 ### Advanced Options
 
 ```bash

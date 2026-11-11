@@ -194,7 +194,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 ## Decision 09: Optimizing penalty for chap 21-26 in priors
 
 - **Date/time:** 11-Nov-2026, 22:30 IST
-- **Commit:** `TBD`
+- **Commit:** `Done`
 - **Decision:** optimize the default chapter factors so that top-3 contains specific disease codes instead of the symptom codes
 
 - **Results (60 dev notes, hybrid retriever with SapBERT, `predictions\hybrid_only_sapbert_embedding_model.jsonl`, official `score.py`):**
@@ -211,7 +211,47 @@ The medical aware embedding model is working much better with 0 retrieval failur
   - API-based ranking (Claude/GPT) - expensive and limited to ~$1 budget
   - First retrieving 50 and them 30 from the mms dataset to check how llm is helping
 
+## Decision 11: LLM for diagnosis understanding to combat the ranking failures
 
+- **Date/time:** 11-Nov-2026, 23:00 IST
+- **Commit:** `TBD`
+- **Decision:** To use LLM (Qwen/Qwen2.5-1.5B-Instruct) which has medical knowledge for the reranking of the codes within 30 candidates as R@30 is close to 1 for all types of inputs styles.
+
+- **Reasoning:**
+  - For reranking needs larger context understanding, specifically medical data. so, LLM which was pretrained on the medical data can help here.
+
+-  **Results**
+  - The inference time is too high as they are running on GPUs. 
+
+- **Alternative Methods**
+  - Use GGUF formatted model instead of FP16 which will occupy less memory.
+
+## Decision 12: One LLM call per note for the local model
+
+- **Date/time:** 11-Nov-2026, 23:35 IST
+- **Commit:** `TBD`
+- **Decision:** `llm_codes` in `src/coder.py` makes one rerank call per note instead of extract plus rerank. The assessment from `extract_assessment` is sent as `ASSESSMENT:` with a 1500-character note excerpt, instead of the full 8000-character note.
+- **Reasoning:**
+  - On a 4-core CPU with no GPU, prefill of about 2,000 note tokens was repeated for each of the two calls per note, and that dominated latency.
+  - The extract call's diagnoses only fed extra retrieval queries. `HybridIndex.search` already adds the extracted assessment as a weighted query, so those queries were redundant.
+  - The extract step could truncate its JSON at `LOCAL_MAX_NEW_TOKENS = 60`, which triggered a retry. The rerank output is only about 30 tokens, so that truncation no longer applies.
+- **Trade-offs:**
+  - The change applies to API providers too, so they lose the LLM-written diagnosis list. This is not yet measured on the dev set.
+  - Timing is not yet measured for this change. The score is measured below.
+
+  **Results (60 dev notes, single rerank call per note, official `score.py`):**
+  - Slice A (n=60)
+  - Top-1 accuracy: 0.233
+  - Top-3 accuracy: 0.450
+  - Points: 22.9 / 75
+  - Missing predictions: 0
+  - Invalid codes: 0
+  - Duplicate IDs: 0
+  - **Score: 22.9 / 75**
+
+  **Observation:** This is 8.8 points below Decision 09 (31.7 / 75, top-3 .567). The single-call change lowers ranking accuracy on dev, so it is a regression on score. Whether the latency gain justifies it is still open, because latency was not recorded for this run. It took ~32 min to run for 60 notes, so for 300 notes, it is going to take 160min which is more than our time. This can be trade-off by increasing threads. but still it is going to tak e ~80min for this task, so this is a backup. 
+
+ 
 
 
 
