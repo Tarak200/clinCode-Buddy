@@ -47,7 +47,7 @@ Modes: default (LLM if a key is set, otherwise retriever only), `--hybrid` (retr
 
 Dev validation for the 70.8 run: 60 notes, 0 missing predictions, 0 invalid codes, 0 duplicate ids. Mean of the three LLM runs is 70.5 (top-1 0.928, top-3 0.967). The dev notes were used to tune prompts and rules, so the dev LLM figures are optimistic. The synthetic set was not used for tuning, but its gold codes were not checked by a clinician, so it is also optimistic.
 
-My estimate of the hidden score (out of 100, a judgement and not a measurement) is about 40 to 46 with no key and about 73 to 88 with an LLM. It is built from two parts: core 25 to 29 (no key) or 55 to 65 (LLM), discounted from the dev scores for tuning; and generalisation 14 to 17 (no key) or 18 to 23 (LLM), from the synthetic set.
+My estimate of the hidden score (out of 100, a judgement and not a measurement) is about 39 to 46 with no key and about 73 to 88 with an LLM. It is built from two parts: core 25 to 29 (no key) or 55 to 65 (LLM), discounted from the dev scores for tuning; and generalisation 14 to 17 (no key) or 18 to 23 (LLM), from the synthetic set.
 
 ## Data added
 

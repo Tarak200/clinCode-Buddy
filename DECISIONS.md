@@ -373,7 +373,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 
 ## Decision 15: Few-shot (3 demostrations) + CoT for better task understanding
 
-- **Date/time:** 12-Nov-2026, between 12:30 IST
+- **Date/time:** 12-Nov-2026, 12:33 IST
 - **Commit:** `acc9202` (few-shot prediction files were committed with the multilingual change)
 - **Observation:** There is no increase in the LLM's performance from these prompt engineering techniques (few-shot examples and CoT reasoning). The score and top-1/top-3 accuracy did not improve over the previous rerank prompt.
 
