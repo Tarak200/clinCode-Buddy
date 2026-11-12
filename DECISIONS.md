@@ -548,7 +548,7 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 ## Decision 20: Diagnosing the top-3 misses before the next change
 
 - **Date/time:** 12-Nov-2026, 16:30 IST
-- **Commit:** `d488306`
+- **Commit:** `f6d22cd`
 
 - **Context:** The run in `misc/llm_run_sc_per_note.jsonl` (shipped config, `SELF_CONSISTENCY_SAMPLES = 1`, residual prompt) scores top-1 0.833 (50/60), top-3 0.867 (52/60), 63.3 / 75. Top-3 needs 54/60 to reach 0.90.
 
@@ -616,7 +616,7 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 ## Decision 21: Term extraction and abbreviation expansion for the vocabulary misses
 
 - **Date/time:** 12-Nov-2026, 17:03 IST
-- **Commit:** `92fff75`
+- **Commit:** `598eaa9`
 
 - **Context:** Decision 20 found that the gold code is missing from the 30-candidate pool for 6 of the 8 top-3 misses (dev-002, dev-008, dev-028, dev-051, dev-056, dev-060). Reranking cannot fix these, so the fix must be in retrieval. The causes are shorthand in the note (for example GORD, SAM, URTI) and lay or paraphrased terms that do not match catalogue titles.
 
@@ -649,7 +649,7 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 ## Decision 22: Synthetic evaluation set for generalisation
 
 - **Date/time:** 12-Nov-2026, 17:32 IST
-- **Commit:** `b8db592` (adds `data/synthetic/synthetic_eval.jsonl` and the README synthetic scores)
+- **Commit:** `a5d44ee` (adds `data/synthetic/synthetic_eval.jsonl` and the README synthetic scores)
 
 - **Context:** The dev set is 60 notes, all used for tuning, and it covers a narrow set of chapters and styles. The brief scores 25 of 100 points on a different distribution, so dev alone says little about generalisation.
 
@@ -677,7 +677,7 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 ## Decision 23: Packaging for the grader (Docker image, offline run, docs)
 
 - **Date/time:** 12-Nov-2026, 17:53 IST
-- **Commit:** `fca8ca0` (Docker packaging), `8a82f06` (comment cleanup), `4f35028` (README, DECISIONS, .gitignore)
+- **Commit:** `296fe83` (Docker packaging), `e34d3ce` (comment cleanup), `936f2d7` (README, DECISIONS, .gitignore)
 
 - **Context:** The run must work from a clean clone with `docker compose run coder /in/notes.jsonl /out/predictions.jsonl`, with no network except the model APIs, and BioLORD-2023-M cannot be downloaded at run time.
 
