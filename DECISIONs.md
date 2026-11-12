@@ -1,7 +1,7 @@
 ## Decision 01: Fixing the basic plan to use for this problem
 
 - **Date/time:** 10-Nov-2026, 14:17 IST
-- **Commit:** None
+- **Commit:** `c0c7c0c`
 - **Decision:** 
     The basic plan has been decided to start with the simple methodologies to complex based on the results and metrics
 - **Reasoning:** As the task can be done in many ways, starting with simple methodology seems fair to understand where improvements are needed
@@ -9,7 +9,7 @@
 ## Decision 02: Implement the BM25 retriever baseline
 
 - **Date/time:** 10-Nov-2026, 15:32 IST
-- **Commit:** `TBD`
+- **Commit:** `b0795f6`
 - **Decision:** Start with a dependency-free local BM25 index over the supplied MMS titles. I matched the words in description to the title in MMS data to return the three highest-ranked valid codes. There are no missing predictions but the matches with gold are worst. so, ranking is bad with the exact match.
 - **Alternatives considered:** semantic embeddings, and API-based ranking.
 - **Evidence:** The supplied catalogue provides valid codes and titles, making a lexical baseline possible without an API.
@@ -25,7 +25,7 @@
 ## Decision 03: Replace BM25 with semantic matching using embeddings
 
 - **Date/time:** 10-Nov-2026, 15:45 IST
-- **Commit:** `TBD`
+- **Commit:** `6ceb666`
 - **Decision:** Implement semantic retrieval using SentenceTransformer embeddings (all-MiniLM-L6-v2). Replace keyword matching with cosine similarity over dense embeddings.
 - **Reasoning:** 
   - BM25 fails because clinical terminology is highly varied. Notes may say "pneumonia" while ICD titles say "community-acquired lower respiratory tract infection"
@@ -53,7 +53,7 @@
 ## Decision 04: storing the embeddings of mms-2026.json 
 
 - **Date/time:** 10-Nov-2026, 17:00 IST
-- **Commit:** `done`
+- **Commit:** `6f6f07e`
 - **Decision:** To create the embeddings of mms-2026.json file
 - **Reasoning:**
   - not to take more time when doing it afterwards.
@@ -61,7 +61,7 @@
 ## Decision 05: Implement hybrid retriever (semantic + lexical)
 
 - **Date/time:** 10-Nov-2026, 21:40 IST
-- **Commit:** `Done`
+- **Commit:** `23cbe23`
 - **Decision:** Create hybrid index combining semantic (70%) and BM25 (30%) scoring. Each approach has complementary strengths.
 - **Reasoning:**
   - Semantic: Captures meaning, handles synonyms and abbreviations
@@ -90,15 +90,15 @@
 ## Decision 06: Diagnosis of the explored methods
 
 - **Date/time:** 10-Nov-2026, 21:42 IST
-- **Commit:** `TBD`
+- **Commit:** `d568c91`
 - **Decision:** About 35% of notes never reach the top-50 (retrieval), and another ~37% are in the top-50 but not the top-3 (ranking). Neither a better ranker nor a better retriever alone gets past ~65%.
 - **Reasoning:**
 - The match between the title and description is not enough. Both the retriever and ranker are not working much. so, have to work on both mechanisms.
 
 ## Decision 07: RRF, assessment extraction, chapter prior, family metric
 
-- **Date/time:** 10-Nov-2026, IST
-- **Commit:** `TBD`
+- **Date/time:** 10-Nov-2026, 23:03 IST
+- **Commit:** `fd51eeb`
 - **Decision:** Replace the 0.7/0.3 score mix in `HybridIndex` with reciprocal rank fusion (k=60) and add three no-key changes:
   - **RRF** (`src/retrieval/fusion.py`): fuses one ranked list per (query, retriever). Zero-score BM25 padding is dropped before fusion, since it is alphabetical filler and not evidence.
   - **Assessment extraction** (`src/retrieval/extract.py`): `A:`/`Dx`/`Imp:`/`Assessment:` for typed and short notes, the doctor's diagnostic sentence for transcripts, negated clauses ("malaria excluded") removed. The assessment is an *extra* query (weight 2); the full note is always kept as a fallback. Found in 58/60 dev notes.
@@ -128,7 +128,7 @@
 ## Decision 08: Usage of medical aware embedding model 
 
 - **Date/time:** 11-Nov-2026, 16:30 IST
-- **Commit:** `TBD`
+- **Commit:** `de4683e`
 - **Decision:** Instead of using the `all-MiniLM-L6-v2` which don't have any medical knowledge, I choose to use the `SapBERT` model which has medical context. Intially used the `NeuML_biomedbert` model as it is ultra-light and fast but it is not able to capture the semantics of the diagnosis. so, `SapBERT` is the best option.
 - **Reasoning:** For `all-MiniLM-L6-v2` even the symptom is refering to a disease, it can't get the context while the `SapBERT` can.
 
@@ -194,7 +194,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 ## Decision 09: Optimizing penalty for chap 21-26 in priors
 
 - **Date/time:** 11-Nov-2026, 22:30 IST
-- **Commit:** `Done`
+- **Commit:** `a46664d`
 - **Decision:** optimize the default chapter factors so that top-3 contains specific disease codes instead of the symptom codes
 
 - **Results (60 dev notes, hybrid retriever with SapBERT, `predictions\hybrid_only_sapbert_embedding_model.jsonl`, official `score.py`):**
@@ -214,7 +214,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 ## Decision 11: LLM for diagnosis understanding to combat the ranking failures
 
 - **Date/time:** 11-Nov-2026, 23:00 IST
-- **Commit:** `TBD`
+- **Commit:** `67230d5`
 - **Decision:** To use LLM (Qwen/Qwen2.5-1.5B-Instruct) which has medical knowledge for the reranking of the codes within 30 candidates as R@30 is close to 1 for all types of inputs styles.
 
 - **Reasoning:**
@@ -229,7 +229,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 ## Decision 12: One LLM call per note for the local model
 
 - **Date/time:** 11-Nov-2026, 23:35 IST
-- **Commit:** `TBD`
+- **Commit:** `67230d5`
 - **Decision:** `llm_codes` in `src/coder.py` makes one rerank call per note instead of extract plus rerank. The assessment from `extract_assessment` is sent as `ASSESSMENT:` with a 1500-character note excerpt, instead of the full 8000-character note.
 - **Reasoning:**
   - On a 4-core CPU with no GPU, prefill of about 2,000 note tokens was repeated for each of the two calls per note, and that dominated latency.
@@ -254,7 +254,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 ## Decision 13: Diagnosing the LLM rerank on top of the hybrid retriever
 
 - **Date/time:** 12-Nov-2026, 02:00 IST
-- **Commit:** `TBD`
+- **Commit:** `67230d5`
 - **Decision:** `misc/diagnose.py` gets `--llm-run`, which scores an LLM rerank run against the same 30-code hybrid pool that `src/coder.py` reranks. Each note is classified as kept, rescued, harmed, pool-miss or outside-pool. The earlier diagnostic only measured retriever recall and never read the LLM's picks.
 - **Reasoning:**
   - Decision 12's LLM score (22.9 / 75) is below the hybrid retriever alone (31.7 / 75), but the score does not say whether the LLM or the retriever is at fault. The split by note shows which.
@@ -296,7 +296,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 ## Decision 14: OpenAI gpt-4o-mini rerank on top of the hybrid retriever
 
 - **Date/time:** 12-Nov-2026, 10:31 IST
-- **Commit:** `TBD`
+- **Commit:** `680c64b`
 - **Decision:** Use the OpenAI API with `gpt-4o-mini` as the reranker on top of the hybrid retriever (SapBERT embeddings with RRF fusion, assessment extraction and chapter prior). The LLM chooses the final codes from the hybrid candidate pool, and the retriever supplies the candidates. The run uses `--api` with `OPENAI_API_KEY` set, instead of the local Qwen model from Decisions 11 to 13.
 - **Reasoning:**
   - The local Qwen rerank was slow on CPU (about 32 min for 60 notes) and lowered the score (Decisions 12 and 13). Its misses were mainly reranking errors, since gold was in the pool for 58/60 notes.
@@ -334,7 +334,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 ## Decision 15: Use OpenAI gpt-4.1-mini for reranking
 
 - **Date/time:** 12-Nov-2026, 11:11 IST
-- **Commit:** `TBD`
+- **Commit:** `37a6c3f` (50-candidate follow-up: `6be59de`)
 - **Decision:** Use OpenAI's `gpt-4.1-mini` as the LLM reranker on top of the hybrid retriever.
 - **Results (60 dev notes, official `score.py`):**
   - Slice A (n=60)
@@ -373,6 +373,8 @@ The medical aware embedding model is working much better with 0 retrieval failur
 
 ## Decision 16: Few-shot (3 demostrations) + CoT for better task understanding
 
+- **Date/time:** 12-Nov-2026, between 11:44 and 13:23 IST (exact time not recorded)
+- **Commit:** `acc9202` (few-shot prediction files were committed with the multilingual change)
 - **Observation:** There is no increase in the LLM's performance from these prompt engineering techniques (few-shot examples and CoT reasoning). The score and top-1/top-3 accuracy did not improve over the previous rerank prompt.
 
 - **Alternatives Considered :**
@@ -381,6 +383,9 @@ The medical aware embedding model is working much better with 0 retrieval failur
 
 
 ## Decision 17: Using the multi-lingual embedding model
+
+- **Date/time:** 12-Nov-2026, 13:23 IST
+- **Commit:** `acc9202`
 
 - **Model:** `andorei/BERGAMOT-multilingual-GAT`
 - **Results (60 notes):**
@@ -421,6 +426,9 @@ The medical aware embedding model is working much better with 0 retrieval failur
 
 ## Decision 18 : Use the tree hierarchy knowledge for better re-ranking
 
+- **Date/time:** 12-Nov-2026, 15:21 IST (exact time of commit; the change was made in the same working session)
+- **Commit:** `7dc0391`
+
 - **Change (Stage 5, `src/coder.py`):**
   - Recall fallback: the LLM names the ICD-11 category of the main diagnosis; leaves of that category that the retriever missed (up to 20) are added and reranked.
   - Specific-child rule: a non-leaf pick becomes `<parent>.Z` unless the note supports a named child.
@@ -460,6 +468,9 @@ The medical aware embedding model is working much better with 0 retrieval failur
 
 ## Decision 19: Trying gpt-5.4-mini as the Stage 5 reranker
 
+- **Date/time:** 12-Nov-2026, 15:21 IST
+- **Commit:** `7dc0391`
+
 - **Change:** Same Stage 5 pipeline as Decision 18 (hybrid retriever, recall fallback, specific-child rule, `category` in output), with the OpenAI reranker switched to `gpt-5.4-mini`. Predictions: `predictions/llm_run_stage5_post_5.4.jsonl`.
 
 - **Results (60 notes), official `score.py`:**
@@ -491,6 +502,9 @@ The medical aware embedding model is working much better with 0 retrieval failur
   - Swapping in a larger model without changing the method (this is what this decision did; it did not separate the models).
 
 ## Decision 20: Self-consistency and residual-vs-named prompt rule for the Stage 5 rerank
+
+- **Date/time:** 12-Nov-2026, 15:50 IST
+- **Commit:** `fe3ae34`
 
 - **Change (`src/coder.py`):**
   - Self-consistency: the code supports a majority vote over `SELF_CONSISTENCY_SAMPLES` rerank passes (first pass greedy, `temperature=0`, `seed=0`; the rest sample at `SAMPLE_TEMPERATURE = 0.7`). The default is set to `1` (greedy only), because the 3-sample vote costs about 3x the LLM spend and did not beat greedy on its own (see results).
@@ -531,8 +545,8 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 
 ## Decision 21: Diagnosing the top-3 misses before the next change
 
-- **Date:** 2026-11-12 15:55 IST.
-- **Commit:** added in the commit that includes this entry (parent `fe3ae34`).
+- **Date/time:** 12-Nov-2026, 15:55 IST
+- **Commit:** `d488306`
 
 - **Context:** The run in `misc/llm_run_sc_per_note.jsonl` (shipped config, `SELF_CONSISTENCY_SAMPLES = 1`, residual prompt) scores top-1 0.833 (50/60), top-3 0.867 (52/60), 63.3 / 75. Top-3 needs 54/60 to reach 0.90.
 
@@ -599,6 +613,9 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 
 ## Decision 22: Term extraction and abbreviation expansion for the vocabulary misses
 
+- **Date/time:** 12-Nov-2026, 17:03 IST
+- **Commit:** `92fff75`
+
 - **Context:** Decision 21 found that the gold code is missing from the 30-candidate pool for 6 of the 8 top-3 misses (dev-002, dev-008, dev-028, dev-051, dev-056, dev-060). Reranking cannot fix these, so the fix must be in retrieval. The causes are shorthand in the note (for example GORD, SAM, URTI) and lay or paraphrased terms that do not match catalogue titles.
 
 - **Change (generic, no note-specific text in prompts):**
@@ -624,4 +641,24 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
   - Dev is also the tuning set. The gain is measured on dev only.
   - The abbreviation list was written after reading the dev misses (GORD, SAM, URTI came from them). It is a standard clinical list, but it is not independent of dev.
   - Slice B (75 hidden notes) is not available locally, so generalisation is not measured. The changes are generic, but this is unverified.
+
+## Decision 23: Packaging for the grader (Docker image, offline run, docs)
+
+- **Date/time:** 12-Nov-2026, 17:53 IST
+- **Commit:** `fca8ca0` (Docker packaging), `8a82f06` (comment cleanup); this entry and the README rewrite are committed next
+
+- **Context:** The run must work from a clean clone with `docker compose run coder /in/notes.jsonl /out/predictions.jsonl`, with no network except the model APIs, and BioLORD-2023-M cannot be downloaded at run time.
+
+- **Options considered:**
+  1. Download BioLORD at run time: rejected, the brief forbids it.
+  2. Bake the model into the image at build time and set `HF_HUB_OFFLINE=1` at run time. Chosen.
+  3. Point `EMBEDDING_MODEL_PATH` at a local folder: rejected, because the cache fingerprint includes the model path, so the tracked cache would miss.
+  4. Install the default CUDA torch: rejected, the grader has no GPU and the wheels are large. Chosen: CPU torch pinned to the `uv.lock` version (2.15.0).
+
+- **What I checked:**
+  - The retriever-only path runs natively on the 60 dev notes and loads the tracked embedding cache. `score.py` reports 0 missing, 0 invalid, 0 duplicate ids, score 29.2 / 75 (top-1 0.317, top-3 0.533). This is the no-key path.
+  - The OpenAI and Anthropic clients use the default HTTP client, so they honour `HTTPS_PROXY`. An empty `HTTPS_PROXY` from compose is ignored.
+  - Docker is not installed here, so the image build and the `docker compose run` command have not been run. This is the main open risk.
+
+- **Revisit:** Run the exact grading command from a fresh clone on a machine with Docker. Measure the 300-note time (under 60 min) and confirm the no-key and keyed runs both give 0 missing and 0 invalid codes. Check the image size and the cold-start time.
 

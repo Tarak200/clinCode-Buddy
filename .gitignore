@@ -36,3 +36,9 @@ data/.embeddings_prev_data/
 
 # synthetic generated dataset
 data/synthetic/*.jsonl
+
+# run folders for docker compose: only the .gitkeep placeholders are tracked
+/in/*
+!/in/.gitkeep
+/out/*
+!/out/.gitkeep

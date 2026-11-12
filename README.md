@@ -1,260 +1,68 @@
-# ICD-11 Semantic Retrieval System
+# ICD-11 coder (MMS 2026-01)
 
-A high-performance ICD-11 code recommendation system using semantic embeddings and hybrid retrieval.
+Assigns up to three ICD-11 MMS codes to each clinical note. A hybrid retriever (BM25 plus BioLORD embeddings, fused with RRF) builds a ranked candidate pool. An optional LLM reranks the pool. With no API key, the retriever alone still answers every note.
 
-## Overview
+## Run
 
-This system reads clinical notes and recommends the top 3 most relevant ICD-11 diagnostic codes. It uses **semantic similarity matching** (embeddings) combined with **lexical matching** (BM25) for robust retrieval.
+From a clean clone, put the notes at `in/notes.jsonl`, then run:
 
-### Performance
-
-| Approach | Top-1 Accuracy | Top-3 Accuracy | Score (out of 75) |
-|----------|---|---|---|
-| BM25 Baseline | 8.3% | 15.0% | 7.9 |
-| **Semantic (SBERT)** | ~25-35% | ~40-50% | ~30-40 |
-| **Hybrid (Semantic + BM25)** | ~28-38% | ~43-52% | ~33-43 |
-
-## Setup
-
-### Prerequisites
-- Python 3.12+
-- 16 GB RAM (for embeddings and model)
-- ~150 MB disk space (embeddings cache + model weights)
-
-### Installation
-
-```bash
-# Install dependencies
-pip install -e .
-
-# Precompute embeddings (one-time, ~2 minutes)
-python setup_embeddings.py
 ```
-
-This downloads the embedding model and precomputes all 50k+ ICD code embeddings, storing them in a cache for fast inference.
-
-## Usage
-
-### Basic Usage
-
-```bash
-# Generate predictions on dev notes
-python src/coder.py 'data/dev_notes.jsonl' 'predictions/20_predictions.jsonl'
-
-# Score predictions
-python score.py --gold 'data/dev_notes.jsonl' \
-                --pred 'predictions_dump/predictions.jsonl' \
-                --mms 'data/mms-2026-01.json'
-```
-
-<!-- python -m src.coder 'data/dev_notes.jsonl' 'predictions/llm_run.jsonl'
-
-python score.py --gold 'data\dev_notes.jsonl' --pred 'predictions\llm_run_4.1_mini.jsonl' --mms 'data\mms-2026-01.json' --per-note 'misc/llm_run_4.1_mini_per_note.jsonl' -->
-
-
-### Advanced Options
-
-```bash
-# Use different embedding model
-python src/coder.py input.jsonl output.jsonl \
-  --mms data/mms-2026-01.json \
-  --model all-mpnet-base-v2
-
-# Test different retrieval methods
-python test_retrieval_comparison.py  # Compare BM25, Semantic, Hybrid
-
-python test_semantic_retriever.py    # Test semantic alone
-```
-
-### Retrieval diagnostics
-
-```bash
-# Compare lexical, SapBERT semantic, and hybrid retrieval
-python -m misc.diagnose --semantic --hybrid
-
-# Compare against the previous MiniLM diagnostic
-python -m misc.diagnose --semantic --hybrid --model all-MiniLM-L6-v2
-
-# Score an LLM rerank run against the hybrid candidate pool it reranks
-python -m misc.diagnose --hybrid --llm-run predictions/llm_run.jsonl
-```
-
-The diagnostic uses SapBERT's CLS embeddings by default; the production coder
-still uses MiniLM. SapBERT weights must be available locally or downloaded
-before running in an offline environment. Each model gets a separate catalogue
-embedding cache. Semantic and hybrid diagnostics configure PyTorch to use all
-logical CPU threads when creating embeddings and running inference.
-
-## System Architecture
-
-### Semantic Retrieval
-1. **Embedding Model**: SentenceTransformer (all-MiniLM-L6-v2)
-   - 22 MB model size
-   - 384-dimensional embeddings
-   - Pre-trained on 215M+ medical and general text pairs
-
-2. **Indexing**: Precomputed embeddings cached to disk
-   - 50k+ ICD codes encoded once
-   - ~76 MB cache file
-   - Loaded once at startup
-
-3. **Retrieval**: Cosine similarity matching
-   - Query text encoded to 384-dim vector
-   - Compared against all catalogue embeddings
-   - Top-3 returned by similarity score
-
-### Hybrid Retrieval
-Combines semantic (70%) and lexical (30%) scoring:
-- **Semantic**: Handles synonyms, abbreviations, concept matching
-- **Lexical (BM25)**: Catches exact keywords, clinical acronyms
-- **Hybrid**: Weighted combination of both signals
-
-## Key Features
-
-### Medical Concept Understanding
-- **Abbreviations**: TB → Tuberculosis
-- **Synonyms**: Pneumonia → Lower respiratory infection
-- **Clinical phrases**: "Fever + cough + chest pain" → Pneumonia codes
-- **Negation awareness**: Different embeddings for "has" vs "no" pneumonia
-
-### Performance Optimizations
-- ✅ Embeddings cached (not recomputed per query)
-- ✅ Batch encoding (future enhancement)
-- ✅ ~51 ms per note, 300 notes in ~15 minutes
-- ✅ Memory efficient: ~150 MB total
-
-### Robustness
-- ✅ No external API calls at inference (embedder runs locally)
-- ✅ Handles multilingual notes (transformer models are multilingual)
-- ✅ Deterministic ranking (reproducible results)
-- ✅ All valid ICD codes from MMS catalogue only
-
-## Docker Deployment
-
-```bash
-# Build image with precomputed embeddings
-docker build -t icd-coder .
-
-# Run on test notes
+docker compose build
 docker compose run coder /in/notes.jsonl /out/predictions.jsonl
 ```
 
-The Dockerfile includes:
-- Slim Python 3.12 base
-- All Python dependencies
-- Precomputed embeddings (built at image time)
-- Ready for 60-minute inference window
+Predictions are written to `out/predictions.jsonl`. The image already contains the BioLORD-2023-M model and the catalogue embeddings, so `run` needs no network access beyond the model APIs.
 
-## Implementation Details
+API keys are optional. Set them in the shell, or copy `.env.example` to `.env`:
 
-### Files
-- `src/retrieval/semantic.py` - SemanticIndex using embeddings
-- `src/retrieval/lexical.py` - LexicalIndex using BM25 (baseline)
-- `src/retrieval/hybrid.py` - HybridIndex combining both
-- `src/coder.py` - Main prediction pipeline
-- `setup_embeddings.py` - Precomputation and setup
-- `SEMANTIC_RETRIEVAL.md` - Detailed technical documentation
-
-### Key Differences from BM25 Baseline
-
-| Aspect | BM25 | Semantic |
-|--------|------|----------|
-| **Matching** | Exact token overlap | Semantic similarity |
-| **Handling synonyms** | No | Yes |
-| **Speed** | Very fast (< 1ms) | Fast (50ms with cache) |
-| **Memory** | ~1 MB | ~150 MB |
-| **Medical knowledge** | None | Pre-trained on medical text |
-| **Accuracy** | 8.3% top-1 | ~30% top-1 |
-
-## Evaluation
-
-### Development Set Results
-
-Run comparison across all methods:
-```bash
-python test_retrieval_comparison.py
+```
+OPENAI_API_KEY=...        # optional
+ANTHROPIC_API_KEY=...     # optional
+HTTPS_PROXY=...           # optional; the OpenAI and Anthropic SDKs honour it
 ```
 
-Output shows:
-- Top-1 and Top-3 accuracy for each method
-- Per-note diagnostic scores
-- Comparison table with improvements
+API spend is capped at US$0.85 (`BUDGET_USD` in `src/coder.py`). A call that would exceed the cap is refused, and those notes keep the retriever ranking. Predictions are written after every note, so a timeout does not lose finished work.
 
-### Per-Note Analysis
+Local run without Docker (requires `uv`):
 
-```bash
-python score.py --gold data/dev_notes.jsonl \
-                --pred predictions/predictions.jsonl \
-                --mms data/mms-2026-01.json \
-                --per-note results.jsonl
+```
+uv sync
+uv run python -m src.coder --hybrid data/dev_notes.jsonl out/dev_predictions.jsonl
+uv run python score.py --gold data/dev_notes.jsonl --pred out/dev_predictions.jsonl --mms data/mms-2026-01.json
 ```
 
-Each line in `results.jsonl` contains:
-- Note ID
-- Predicted codes (up to 3)
-- Gold codes
-- Match status (exact/partial/miss)
+Modes: default (LLM if a key is set, otherwise retriever only), `--hybrid` (retriever only, no API calls), `--api` (requires a key).
 
-## Future Improvements
+**Status:** Docker is not installed on the machine used for development, so the image build has not been run. The Python path was run end to end with the commands above.
 
-### Short-term (if more time)
-- [ ] Fine-tune embedding model on medical domain (MedBERT)
-- [ ] Add LLM-based reranking for top-10 candidates
-- [ ] Incorporate ICD hierarchy (parent-child relationships)
-- [ ] Query expansion with medical ontologies
+## Scores (60 dev notes, official `score.py`)
 
-### Medium-term
-- [ ] Multi-language support optimization
-- [ ] Hybrid ensemble with clinical NER
-- [ ] Negative case handling (detecting "no" conditions)
-- [ ] Chapter-specific models
+| Setup | Score (of 75) | Top-1 | Top-3 |
+|---|---|---|---|
+| Retriever only, no key (`--hybrid`, measured) | 29.2 | 0.317 | 0.533 |
+| Best recorded LLM run (gpt-4.1-mini rerank, term extraction, abbreviations; Decision 22) | 70.0 to 70.8 | not recorded | not recorded |
 
-### Long-term
-- [ ] Real-time user feedback loop
-- [ ] Active learning from corrections
-- [ ] Integration with clinical decision support
+The dev notes were used to tune prompts and rules, so the LLM figures are optimistic. My estimate of the hidden score is 55 to 65 with an LLM and about 27 to 31 without a key. The estimate is a judgement, not a measurement: the dev set was used for tuning, so I expect the hidden score to be lower.
 
-## Troubleshooting
+## Data added
 
-### Setup Issues
+- **Catalogue embeddings:** `data/.embeddings_cache/mms-2026-01_FremyCompany_BioLORD-2023-M.pkl`, computed from `data/mms-2026-01.json` with BioLORD-2023-M. The model is downloaded at image build time.
+- **Abbreviation table and chapter priors:** written by hand in `src/coder.py` and `src/retrieval/priors.py`. The chapter multipliers come from the dev-set analysis in Decision 09.
+- **Synthetic evaluation notes:** 104 notes in `data/synthetic/synthetic_eval.jsonl`, 30 of them non-English. They cover several note styles (typed consult, ambient transcript) and perturbations such as negation. I wrote the gold codes, so this set is a weaker signal than the dev set. It is gitignored and not shipped in the image.
 
-**Q: OOM error during embeddings precomputation**
-```
-A: Reduce batch size in semantic.py encode() call, or split MMS into chunks
-```
+## Evaluation beyond dev
 
-**Q: Model download times out**
-```
-A: Check internet connection, ensure HTTPS_PROXY is set if behind proxy
-   Models are cached in ~/.cache/huggingface/
-```
+- The synthetic set above, scored with the same `score.py`.
+- Output checks on every run: missing predictions, invalid codes and duplicate ids are all reported by `score.py`. The dev runs had 0 of each.
+- Pool-recall checks (is the gold code in the 30-candidate pool?) to separate retrieval failures from ranking failures.
 
-**Q: "sentence-transformers not found"**
-```
-A: pip install -e .
-```
+## AI tooling error I caught
 
-### Inference Issues
+In Decision 21, the first failure table labelled three misses (dev-051, dev-056, dev-060) as reranking problems. The gold code was missing from the candidate pool for those notes, so they were retrieval problems. A pool-membership check showed this, and the table was corrected before the next change. See `DECISIONs.md`.
 
-**Q: Predictions are empty or invalid**
-```
-A: Check MMS path, verify JSON format with:
-   python -c "import json; json.load(open('data/mms-2026-01.json'))"
-```
+## Files
 
-**Q: Slow predictions (> 100ms per note)**
-```
-A: Embeddings should be cached. Check cache file exists:
-   ls -lh data/.embeddings_cache/
-```
-
-## References
-
-- **Paper**: "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks"
-- **Model Card**: https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2
-- **ICD-11 MMS**: https://icd.who.int/
-- **Cosine Similarity**: https://en.wikipedia.org/wiki/Cosine_similarity
-
-## License
-
-Assessment submission for Sugen Technologies
+- `src/coder.py`: CLI, LLM reranking, budget and deadline handling.
+- `src/retrieval/`: BM25, semantic, RRF fusion, term extraction, chapter priors.
+- `Dockerfile`, `.dockerignore`, `docker-compose.yml`: packaging.
+- `DECISIONs.md`: decision log with dates and commit hashes.
