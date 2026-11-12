@@ -35,25 +35,30 @@ Modes: default (LLM if a key is set, otherwise retriever only), `--hybrid` (retr
 
 **Status:** Docker is not installed on the machine used for development, so the image build has not been run. The Python path was run end to end with the commands above.
 
-## Scores (60 dev notes, official `score.py`)
+## Scores (official `score.py`)
 
-| Setup | Score (of 75) | Top-1 | Top-3 |
-|---|---|---|---|
-| Retriever only, no key (`--hybrid`, measured) | 29.2 | 0.317 | 0.533 |
-| Best recorded LLM run (gpt-4.1-mini rerank, term extraction, abbreviations; Decision 22) | 70.0 to 70.8 | not recorded | not recorded |
+| Setup | Set (scale) | Score | Top-1 | Top-3 |
+|---|---|---|---|---|
+| Retriever only, no key (`--hybrid`) | 60 dev notes, core (of 75) | 29.2 | 0.317 | 0.533 |
+| Best LLM run (gpt-4.1-mini rerank, term extraction, abbreviations; Decision 22, runs 2 and 3) | 60 dev notes, core (of 75) | 70.8 | 0.933 | 0.967 |
+| LLM run 1 of the same setup (Decision 22) | 60 dev notes, core (of 75) | 70.0 | 0.917 | 0.967 |
+| Retriever only, no key (`--hybrid`) | 104 synthetic notes, generalisation (of 25) | 16.6 | 0.615 | 0.760 |
+| LLM rerank on the retriever | 104 synthetic notes, generalisation (of 25) | 23.2 | 0.913 | 0.952 |
 
-The dev notes were used to tune prompts and rules, so the LLM figures are optimistic. My estimate of the hidden score is 55 to 65 with an LLM and about 27 to 31 without a key. The estimate is a judgement, not a measurement: the dev set was used for tuning, so I expect the hidden score to be lower.
+Dev validation for the 70.8 run: 60 notes, 0 missing predictions, 0 invalid codes, 0 duplicate ids. Mean of the three LLM runs is 70.5 (top-1 0.928, top-3 0.967). The dev notes were used to tune prompts and rules, so the dev LLM figures are optimistic. The synthetic set was not used for tuning, but its gold codes were not checked by a clinician, so it is also optimistic.
+
+My estimate of the hidden score (out of 100, a judgement and not a measurement) is about 40 to 46 with no key and about 73 to 88 with an LLM. It is built from two parts: core 25 to 29 (no key) or 55 to 65 (LLM), discounted from the dev scores for tuning; and generalisation 14 to 17 (no key) or 18 to 23 (LLM), from the synthetic set.
 
 ## Data added
 
 - **Catalogue embeddings:** `data/.embeddings_cache/mms-2026-01_FremyCompany_BioLORD-2023-M.pkl`, computed from `data/mms-2026-01.json` with BioLORD-2023-M. The model is downloaded at image build time.
 - **Abbreviation table and chapter priors:** written by hand in `src/coder.py` and `src/retrieval/priors.py`. The chapter multipliers come from the dev-set analysis in Decision 09.
-- **Synthetic evaluation notes:** 104 notes in `data/synthetic/synthetic_eval.jsonl`, 30 of them non-English. They cover several note styles (typed consult, ambient transcript) and perturbations such as negation. I wrote the gold codes, so this set is a weaker signal than the dev set. It is gitignored and not shipped in the image.
+- **Synthetic evaluation notes:** 104 notes in `data/synthetic/synthetic_eval.jsonl`, 34 of them non-English. They cover three note styles (typed consult, ambient transcript, short consult). Its gold codes were not checked by a clinician, so it is a weaker signal than the dev set. It is not used at run time.
 
 ## Evaluation beyond dev
 
-- The synthetic set above, scored with the same `score.py`.
-- Output checks on every run: missing predictions, invalid codes and duplicate ids are all reported by `score.py`. The dev runs had 0 of each.
+- The synthetic set above, scored with the same `score.py`: retriever only 16.6 of 25, LLM rerank 23.2 of 25.
+- Output checks on every run: missing predictions, invalid codes and duplicate ids are all reported by `score.py`. The dev and synthetic runs had 0 of each.
 - Pool-recall checks (is the gold code in the 30-candidate pool?) to separate retrieval failures from ranking failures.
 
 ## AI tooling error I caught

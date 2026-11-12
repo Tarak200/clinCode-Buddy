@@ -31,11 +31,8 @@ data/.embeddings_cache/mms-2026-01_NeuML_biomedbert-small-embeddings.pkl
 
 # chapter factor tuning outputs
 predictions_dump/
-predictions/
+predictions_all/
 data/.embeddings_prev_data/
-
-# synthetic generated dataset
-data/synthetic/*.jsonl
 
 # run folders for docker compose: only the .gitkeep placeholders are tracked
 /in/*

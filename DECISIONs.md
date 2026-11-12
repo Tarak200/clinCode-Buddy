@@ -26,11 +26,11 @@
 
 - **Date/time:** 10-Nov-2026, 15:45 IST
 - **Commit:** `6ceb666`
-- **Decision:** Implement semantic retrieval using SentenceTransformer embeddings (all-MiniLM-L6-v2). Replace keyword matching with cosine similarity over dense embeddings.
+- **Decision:** Implement semantic retrieval using SentenceTransformer embeddings (`all-MiniLM-L6-v2`). Replace keyword matching with cosine similarity over dense embeddings.
 - **Reasoning:** 
   - BM25 fails because clinical terminology is highly varied. Notes may say "pneumonia" while ICD titles say "community-acquired lower respiratory tract infection"
   - Semantic embeddings capture medical concepts even when vocabulary differs
-  - all-MiniLM-L6-v2 is lightweight (22MB), fast (~50ms/note), and validates well on medical similarity tasks
+  - `all-MiniLM-L6-v2` is lightweight (22MB), fast (~50ms/note), and validates well on medical similarity tasks
   - Embeddings can be precomputed and cached, making inference fast for the 60-minute constraint
 - **Alternatives considered:** 
   - API-based ranking (Claude/GPT) - expensive and limited to ~$1 budget
@@ -373,7 +373,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 
 ## Decision 16: Few-shot (3 demostrations) + CoT for better task understanding
 
-- **Date/time:** 12-Nov-2026, between 11:44 and 13:23 IST (exact time not recorded)
+- **Date/time:** 12-Nov-2026, between 12:30 IST
 - **Commit:** `acc9202` (few-shot prediction files were committed with the multilingual change)
 - **Observation:** There is no increase in the LLM's performance from these prompt engineering techniques (few-shot examples and CoT reasoning). The score and top-1/top-3 accuracy did not improve over the previous rerank prompt.
 
@@ -386,6 +386,8 @@ The medical aware embedding model is working much better with 0 retrieval failur
 
 - **Date/time:** 12-Nov-2026, 13:23 IST
 - **Commit:** `acc9202`
+
+- **Reasoning :** I was using only the english clinical text aware embedding model `all-MiniLM-L6-v2` but the hidden text from slice B can contain clinical text of different language. so, I tested the following models to choose the better model with tradeoff between latency, performance and size.
 
 - **Model:** `andorei/BERGAMOT-multilingual-GAT`
 - **Results (60 notes):**
@@ -426,7 +428,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 
 ## Decision 18 : Use the tree hierarchy knowledge for better re-ranking
 
-- **Date/time:** 12-Nov-2026, 15:21 IST (exact time of commit; the change was made in the same working session)
+- **Date/time:** 12-Nov-2026, 15:21 IST
 - **Commit:** `7dc0391`
 
 - **Change (Stage 5, `src/coder.py`):**
@@ -466,12 +468,12 @@ The medical aware embedding model is working much better with 0 retrieval failur
 - **Alternatives Considered :**
   - Larger model without changing the prompt (Decision 16 showed prompt changes alone did not help).
 
-## Decision 19: Trying gpt-5.4-mini as the Stage 5 reranker
+## Decision 19: Trying gpt-5.4-mini as the reranker
 
-- **Date/time:** 12-Nov-2026, 15:21 IST
+- **Date/time:** 12-Nov-2026, 15:50 IST
 - **Commit:** `7dc0391`
 
-- **Change:** Same Stage 5 pipeline as Decision 18 (hybrid retriever, recall fallback, specific-child rule, `category` in output), with the OpenAI reranker switched to `gpt-5.4-mini`. Predictions: `predictions/llm_run_stage5_post_5.4.jsonl`.
+- **Change:** Same pipeline as Decision 18 (hybrid retriever, recall fallback, specific-child rule, `category` in output), with the OpenAI reranker switched to `gpt-5.4-mini`. Predictions: `predictions/llm_run_stage5_post_5.4.jsonl`.
 
 - **Results (60 notes), official `score.py`:**
   - Slice A (n=60)
@@ -503,7 +505,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 
 ## Decision 20: Self-consistency and residual-vs-named prompt rule for the Stage 5 rerank
 
-- **Date/time:** 12-Nov-2026, 15:50 IST
+- **Date/time:** 12-Nov-2026, 16:05 IST
 - **Commit:** `fe3ae34`
 
 - **Change (`src/coder.py`):**
@@ -545,7 +547,7 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 
 ## Decision 21: Diagnosing the top-3 misses before the next change
 
-- **Date/time:** 12-Nov-2026, 15:55 IST
+- **Date/time:** 12-Nov-2026, 16:30 IST
 - **Commit:** `d488306`
 
 - **Context:** The run in `misc/llm_run_sc_per_note.jsonl` (shipped config, `SELF_CONSISTENCY_SAMPLES = 1`, residual prompt) scores top-1 0.833 (50/60), top-3 0.867 (52/60), 63.3 / 75. Top-3 needs 54/60 to reach 0.90.
@@ -642,23 +644,49 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
   - The abbreviation list was written after reading the dev misses (GORD, SAM, URTI came from them). It is a standard clinical list, but it is not independent of dev.
   - Slice B (75 hidden notes) is not available locally, so generalisation is not measured. The changes are generic, but this is unverified.
 
-## Decision 23: Packaging for the grader (Docker image, offline run, docs)
+
+
+## Decision 23: Synthetic evaluation set for generalisation
+
+- **Date/time:** 12-Nov-2026, 17:32 IST
+- **Commit:** the commit that adds `data/synthetic/synthetic_eval.jsonl` and the README scores (hash to be recorded when committed)
+
+- **Context:** The dev set is 60 notes, all used for tuning, and it covers a narrow set of chapters and styles. The brief scores 25 of 100 points on a different distribution, so dev alone says little about generalisation.
+
+- **Options considered:**
+  1. Hold out part of dev: too small, and already used for tuning.
+  2. Rely on dev alone: no signal on other chapters, styles or languages.
+  3. Write a synthetic set of notes in several styles, including non-English notes, and score it with `score.py`. Chosen.
+
+- **Change:** `data/synthetic/synthetic_eval.jsonl` has 104 notes: 34 non-English (es, pt, fr, hi, sw and others), in three styles (typed consult, ambient transcript, short consult). Chapters 01 to 03, 24 to 26 are covered, including the traditional medicine chapter (TM1/TM2). It is tracked in git. `score.py` reports only the generalisation slice for it, so the score is out of 25.
+
+- **Results (`score.py`, 104 notes, 0 missing, 0 invalid, 0 duplicate ids in both runs):**
+
+| Run | Top-1 | Top-3 | Score (of 25) |
+|---|---|---|---|
+| Retriever only, no key (`--hybrid`) | 0.615 | 0.760 | 16.6 |
+| LLM rerank on the retriever | 0.913 | 0.952 | 23.2 |
+
+- **Caveats:**
+  - I wrote the gold codes and they were not checked by a clinician, so the set is optimistic about the catalogue and easier than real notes.
+  - The LLM run is not recorded with its model name. The README's dev LLM rows use `gpt-4.1-mini`, but I have not confirmed that this run used the same model.
+  - No code change was made in response to these numbers.
+
+- **Revisit:** have a clinician check the gold codes; add chapters with few dev notes; report the 30 non-English notes separately; record the model and settings for every LLM run.
+
+## Decision 24: Packaging for the grader (Docker image, offline run, docs)
 
 - **Date/time:** 12-Nov-2026, 17:53 IST
-- **Commit:** `fca8ca0` (Docker packaging), `8a82f06` (comment cleanup); this entry and the README rewrite are committed next
+- **Commit:** `fca8ca0` (Docker packaging), `8a82f06` (comment cleanup), `4f35028` (README, DECISIONs, .gitignore)
 
 - **Context:** The run must work from a clean clone with `docker compose run coder /in/notes.jsonl /out/predictions.jsonl`, with no network except the model APIs, and BioLORD-2023-M cannot be downloaded at run time.
 
-- **Options considered:**
-  1. Download BioLORD at run time: rejected, the brief forbids it.
-  2. Bake the model into the image at build time and set `HF_HUB_OFFLINE=1` at run time. Chosen.
-  3. Point `EMBEDDING_MODEL_PATH` at a local folder: rejected, because the cache fingerprint includes the model path, so the tracked cache would miss.
-  4. Install the default CUDA torch: rejected, the grader has no GPU and the wheels are large. Chosen: CPU torch pinned to the `uv.lock` version (2.15.0).
+- **Characteristics:**
+  1. Bake the model into the image at build time and set `HF_HUB_OFFLINE=1` at run time. Chosen.
+  2. Install the default CUDA torch: rejected, the grader has no GPU and the wheels are large. Chosen: CPU torch pinned to the `uv.lock` version (2.15.0).
 
 - **What I checked:**
   - The retriever-only path runs natively on the 60 dev notes and loads the tracked embedding cache. `score.py` reports 0 missing, 0 invalid, 0 duplicate ids, score 29.2 / 75 (top-1 0.317, top-3 0.533). This is the no-key path.
   - The OpenAI and Anthropic clients use the default HTTP client, so they honour `HTTPS_PROXY`. An empty `HTTPS_PROXY` from compose is ignored.
   - Docker is not installed here, so the image build and the `docker compose run` command have not been run. This is the main open risk.
-
-- **Revisit:** Run the exact grading command from a fresh clone on a machine with Docker. Measure the 300-note time (under 60 min) and confirm the no-key and keyed runs both give 0 missing and 0 invalid codes. Check the image size and the cold-start time.
 
