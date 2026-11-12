@@ -591,3 +591,42 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 - Check pool recall for these 8 notes. Log whether the gold is in the 30-candidate pool. If it isn't, the fix is retrieval, not reranking.
 - Term extraction before retrieval. Have the LLM extract the diagnosis as English clinical terms and retrieve with those too. This targets dev-002, dev-008 and dev-056.
 - Specificity handling for the family misses. Look at how .Z and named children are ranked in the prompt for dev-033 and dev-057. Keep any rule general, not written for one note. ( this is for 3 family but specificity misses)
+
+- **Results :**
+
+  - **Slice A (60 dev notes, `score.py`):** top-1 0.867 (52/60), top-3 0.867 (52/60), **Score: 65.0 / 75**. Validation: 60 notes, 0 missing predictions, 0 invalid codes, 0 duplicate ids.
+  - Comparison: 65.0 is within the spread of the three fixed-rule runs above (64.2 to 67.5, mean 66.0). Top-3 of 0.867 is below the 0.900 of the best fixed run.
+
+## Decision 22: Term extraction and abbreviation expansion for the vocabulary misses
+
+- **Context:** Decision 21 found that the gold code is missing from the 30-candidate pool for 6 of the 8 top-3 misses (dev-002, dev-008, dev-028, dev-051, dev-056, dev-060). Reranking cannot fix these, so the fix must be in retrieval. The causes are shorthand in the note (for example GORD, SAM, URTI) and lay or paraphrased terms that do not match catalogue titles.
+
+- **Change (generic, no note-specific text in prompts):**
+  1. **Term extraction (plan Stage 1B):** one short LLM call per note (`extract_terms`, prompt `TERMS_SYSTEM`) returns up to 4 English clinical diagnosis terms, spelled out, with lay words translated. The terms lead the retrieval query. If the call fails, the note gets no terms. Controlled by `TERM_EXTRACTION`.
+  2. **Abbreviation expansion:** `QUERY_ABBREVIATIONS` (about 25 standard clinical abbreviations) is applied to the retrieval query only, not to the LLM prompt.
+
+- **Pool check (abbreviations only):** gold in the pool for 54 of 61 dev gold codes, up from 53 of 61. dev-028 (GORD) entered the pool at rank 23. I did not re-run the pool check after adding term extraction.
+
+- **Results (60 dev notes, `score.py`, `gpt-4.1-mini`):**
+
+| Run | Top-1 | Top-3 | Score |
+|---|---|---|---|
+| Term extraction + abbreviations, run 1 | 0.917 | 0.967 | 70.0 / 75 |
+| Term extraction + abbreviations, run 2 | 0.933 | 0.967 | 70.8 / 75 |
+| Term extraction + abbreviations, run 3 | 0.933 | 0.967 | 70.8 / 75 |
+| Fixed rule only, mean of 3 runs (Decision 21) | 0.878 | 0.883 | 66.0 / 75 |
+
+  - Mean of the 3 term-extraction runs: 70.5 / 75 (top-1 0.928, top-3 0.967), up from 66.0.
+  - Top-3 misses are the same in all 3 runs: dev-002 (gold CA00, CA07.0; predicted 1E1Z, 1D86, 1D4Z) and dev-051 (gold 5B52; predicted MG29.01/MG29.3/CB01, or MG29.3/CB01/EH40.3 in run 2). These are the 2 notes that remain.
+  - Cost: about $0.093 per 60-note run. Linear scaling gives about $0.47 for 300 notes, within the $1 budget. Only the term call is added to the pipeline.
+
+- **Caveats:**
+  - Dev is also the tuning set. The gain is measured on dev only.
+  - The abbreviation list was written after reading the dev misses (GORD, SAM, URTI came from them). It is a standard clinical list, but it is not independent of dev.
+  - Slice B (75 hidden notes) is not available locally, so generalisation is not measured. The changes are generic, but this is unverified.
+
+- **Alternatives considered:**
+  - More self-consistency samples to fill top-3: rejected, as in Decision 21 (cost and it mainly helps top-1).
+  - More candidates in the top-3 slots: not tested yet.
+
+- **Revisit:** check whether dev-002 and dev-051 gold codes are in the pool with terms on (pool probe). Check that term extraction adds no new top-3 misses (none seen in 3 runs). Ask for slice B or a held-out check before calling this a hidden-set gain.
