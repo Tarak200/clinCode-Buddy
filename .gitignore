@@ -1,0 +1,38 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local credentials
+.env
+
+.vscode/
+
+# plan files
+plan.txt
+
+# uncessary .md files
+SUMMARY.md
+plan.md
+function_description.md
+
+# misc
+/misc
+
+# model cache
+data/.model_cache/
+data/.embeddings_cache/mms-2026-01_NeuML_biomedbert-small-embeddings.pkl
+
+# chapter factor tuning outputs
+predictions_dump/
+predictions/
+data/.embeddings_prev_data/
+
+# synthetic generated dataset
+data/synthetic/*.jsonl

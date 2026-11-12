@@ -1,0 +1,26 @@
+.git
+.venv
+.vscode
+.env
+.env.*
+__pycache__
+**/__pycache__
+*.pyc
+
+# Local-only material, not needed in the image
+misc
+models
+predictions
+predictions_dump
+data_exploration
+data/.model_cache
+data/.embeddings_prev_data
+data/synthetic
+data/.embeddings_cache/*
+!data/.embeddings_cache/mms-2026-01_FremyCompany_BioLORD-2023-M.pkl
+in
+out
+SUMMARY.md
+plan.md
+plan.txt
+function_description.md
