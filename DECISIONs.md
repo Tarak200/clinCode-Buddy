@@ -625,8 +625,3 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
   - The abbreviation list was written after reading the dev misses (GORD, SAM, URTI came from them). It is a standard clinical list, but it is not independent of dev.
   - Slice B (75 hidden notes) is not available locally, so generalisation is not measured. The changes are generic, but this is unverified.
 
-- **Alternatives considered:**
-  - More self-consistency samples to fill top-3: rejected, as in Decision 21 (cost and it mainly helps top-1).
-  - More candidates in the top-3 slots: not tested yet.
-
-- **Revisit:** check whether dev-002 and dev-051 gold codes are in the pool with terms on (pool probe). Check that term extraction adds no new top-3 misses (none seen in 3 runs). Ask for slice B or a held-out check before calling this a hidden-set gain.
