@@ -418,3 +418,75 @@ The medical aware embedding model is working much better with 0 retrieval failur
 
 - **Alternative Considered :**
   - use the tree hierarchy knowledge
+
+## Decision 18 : Use the tree hierarchy knowledge for better re-ranking
+
+- **Change (Stage 5, `src/coder.py`):**
+  - Recall fallback: the LLM names the ICD-11 category of the main diagnosis; leaves of that category that the retriever missed (up to 20) are added and reranked.
+  - Specific-child rule: a non-leaf pick becomes `<parent>.Z` unless the note supports a named child.
+  - Prompt: the LLM first checks which candidates fit the main diagnosis, then ranks them, so the first pick is the most relevant. The output JSON adds `category`.
+  - Dropped on the gate: residual-sibling rule (hurt one held-out fold, helped neither) and slot-2 strategy (hurt the even fold).
+
+- **Results (60 notes), current code, OpenAI gpt-4.1-mini, `temperature=0`:**
+  - Slice A (n=60)
+  - Top-1 accuracy: 0.767
+  - Top-3 accuracy: 0.833
+  - Points: 59.2 / 75
+  - Missing predictions: 0
+  - Invalid codes: 0
+  - Duplicate IDs: 0
+  - **Score: 59.2 / 75**
+
+- **Run-to-run variance (same code):**
+  - Unseeded runs: 57.9, 60.0, 60.0, 60.4 (`predictions/llm_run_stage5_post.jsonl` scored 57.9)
+  - With `seed=0` added to the OpenAI request: 61.7, 61.7
+  - Eleven of 60 notes changed between two unseeded runs, so the spread (about 4 points) is larger than most of the gains we have measured.
+  - Baseline before Stage 5: 57.9 / 75.
+
+- **Observation:**
+  - The ablation favoured keeping the recall fallback and the specific-child rule. The per-fold deltas are small (n=30 per fold), so none of the gains is clearly significant.
+  - Top-3 (0.833) is close to the top-3 ceiling of the retriever-plus-LLM pipeline, so the remaining gap is mostly in top-1 (0.767). Top-1 is worth 2× in the score.
+  - The LLM's picks are not stable at `temperature=0`. Seeding helps but does not guarantee identical output. Keeping the residual-sibling and slot-2 rules (dropped on the gate).
+
+- **Next steps to try to exceed 65 / 75:**
+  - Measure the mean over several seeded runs before judging any change; a single run is not enough.
+  - Self-consistency: run the rerank 3 to 5 times and take the majority top-1. This targets the instability directly and is cheap with gpt-4.1-mini.
+  - Error analysis on the top-1 misses: group them by type (wrong category, wrong specificity, residual vs named child) and fix the most common type.
+  - Try a stronger model (for example gpt-4.1 or Claude Sonnet) on the same pipeline, and check cost against the $1 budget first.
+  - Improve retrieval recall for the category the LLM names, so the right leaf is in the candidate list before reranking.
+
+- **Alternatives Considered :**
+  - Larger model without changing the prompt (Decision 16 showed prompt changes alone did not help).
+
+## Decision 19: Trying gpt-5.4-mini as the Stage 5 reranker
+
+- **Change:** Same Stage 5 pipeline as Decision 18 (hybrid retriever, recall fallback, specific-child rule, `category` in output), with the OpenAI reranker switched to `gpt-5.4-mini`. Predictions: `predictions/llm_run_stage5_post_5.4.jsonl`.
+
+- **Results (60 notes), official `score.py`:**
+  - Slice A (n=60)
+  - Top-1 accuracy: 0.733
+  - Top-3 accuracy: 0.883
+  - Points: 58.7 / 75
+  - Missing predictions: 0
+  - Invalid codes: 0
+  - Duplicate IDs: 0
+  - **Score: 58.7 / 75**
+
+- **Comparison with gpt-4.1-mini (Decision 18, 59.2 / 75):**
+  - Top-1 fell from 0.767 to 0.733, so the score is about the same, but top-3 rose from 0.833 to 0.883.
+  - The score gap (0.5 points) is smaller than the run-to-run spread measured in Decision 18 (about 4 points), so this is not a measured improvement.
+
+- **Observation:**
+  - A stronger or newer model did not fix top-1. The model finds the right code in its top 3 more often, but it does not put the right code first.
+  - Top-1 is worth 2× in the score, so the gap that matters is ranking within the top 3, not recall.
+  - Changing the model alone does not change the results. The evaluation method (single unseeded run per model, 60 notes) cannot separate models that differ by about 1 to 4 points, so the method has to change before the next model comparison.
+
+- **Methodology change needed:**
+  - Measure each configuration as a mean over several seeded runs (at least 3), and report the spread, not a single score.
+  - Evaluate the top-1 misses separately (wrong category, wrong specificity, residual vs named child) before trying another model.
+  - Use a larger dev set or the 30-note folds from Decision 18 with paired comparisons, so small differences are tested rather than read from one run.
+  - Keep the score as the headline, but judge a change only if it beats the run-to-run spread of the baseline.
+
+- **Alternatives Considered :**
+  - Swapping in a larger model without changing the method (this is what this decision did; it did not separate the models).
+
