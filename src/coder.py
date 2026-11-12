@@ -41,10 +41,9 @@ from src.retrieval.extract import extract_assessment
 from src.retrieval.hybrid import HybridIndex
 from tqdm import tqdm
 
-BUDGET_USD = 0.85  # hard stop, the real limit is $1 for the whole run
+BUDGET_USD = 0.85  # hard stop; the grading limit is $1 for the whole run
 CALL_TIMEOUT_S = 30
 WORKERS = 8
-# "cambridgeltl/SapBERT-from-PubMedBERT-fulltext"
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL_PATH") or "FremyCompany/BioLORD-2023-M"
 CANDIDATES = 30
 MAX_NOTE_CHARS = 8000
@@ -52,21 +51,21 @@ NOTE_TAIL_WITH_ASSESSMENT = 1000  # the assessment sits near the end, so the exc
 NOTE_HEAD_CHARS = 600  # without an assessment: head plus tail keeps the start and the conclusion
 NOTE_TAIL_CHARS = 1200
 LLM_DEADLINE_S = 50 * 60  # past this, remaining notes keep the retriever ranking
-RERANK_MAX_TOKENS = 256  # short reasoning, the category and the picks object
+RERANK_MAX_TOKENS = 256
 EXPAND_MAX_LEAVES = 20  # leaves added from a named category the retriever missed
-# Self-consistency: the first pass is greedy, the others sample; the most common top-1 wins
+# The first pass is greedy and the others sample; the most common top-1 wins.
 SELF_CONSISTENCY_SAMPLES = 1
 SAMPLE_TEMPERATURE = 0.7
-# Term extraction: one short call per note; its English terms are added to the retrieval query
+# One short call per note; its English terms are added to the retrieval query.
 TERM_EXTRACTION = True
 TERMS_MAX_TOKENS = 120
 MAX_TERMS = 4
-# Stage 5 rules, on by default; switching one off is only for ablation runs
+# Rule switches are on by default; turn one off only for ablation runs.
 RECALL_FALLBACK = True
 SPECIFIC_CHILD_RULE = True
 PICKS_PREFILL = '{"reasoning": "'  # Anthropic has no JSON mode, so the answer starts with this
 
-# Standard clinical abbreviations; their full wording is added to the retrieval query only
+# Standard clinical abbreviations; their expansion is added to the retrieval query only.
 QUERY_ABBREVIATIONS = {
     "URTI": "upper respiratory tract infection",
     "LRTI": "lower respiratory tract infection",

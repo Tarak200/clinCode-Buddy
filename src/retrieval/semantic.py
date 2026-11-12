@@ -179,7 +179,6 @@ class SemanticIndex:
         if not self._embedder or self._embeddings is None or not self._embeddings.size:
             raise ValueError("Embedder not initialized or embeddings not computed")
 
-        # Encode the query text
         query_embedding = np.asarray(self._embedder.encode(text))
         if (
             query_embedding.ndim != 1
@@ -189,15 +188,11 @@ class SemanticIndex:
         ):
             raise ValueError("Embedder returned an invalid query embedding")
         
-        # Compute cosine similarity with all documents
-        # Normalize embeddings for cosine similarity
         query_norm = query_embedding / (np.linalg.norm(query_embedding) + 1e-8)
         doc_norms = self._embeddings / (np.linalg.norm(self._embeddings, axis=1, keepdims=True) + 1e-8)
-        
-        # Cosine similarity is dot product of normalized vectors
         scores = doc_norms @ query_norm
-        
-        # Sort by score (descending) and then by code (for deterministic ordering)
+
+        # Ties are broken by code so the ranking is deterministic.
         ranked_indices = sorted(
             range(len(scores)),
             key=lambda index: (-float(scores[index]), self._documents[index][0]),
