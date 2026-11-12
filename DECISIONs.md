@@ -53,7 +53,7 @@
 ## Decision 04: storing the embeddings of mms-2026.json 
 
 - **Date/time:** 10-Nov-2026, 17:00 IST
-- **Commit:** `TBD`
+- **Commit:** `done`
 - **Decision:** To create the embeddings of mms-2026.json file
 - **Reasoning:**
   - not to take more time when doing it afterwards.
@@ -251,7 +251,91 @@ The medical aware embedding model is working much better with 0 retrieval failur
 
   **Observation:** This is 8.8 points below Decision 09 (31.7 / 75, top-3 .567). The single-call change lowers ranking accuracy on dev, so it is a regression on score. Whether the latency gain justifies it is still open, because latency was not recorded for this run. It took ~32 min to run for 60 notes, so for 300 notes, it is going to take 160min which is more than our time. This can be trade-off by increasing threads. but still it is going to tak e ~80min for this task, so this is a backup. 
 
- 
+## Decision 13: Diagnosing the LLM rerank on top of the hybrid retriever
+
+- **Date/time:** 12-Nov-2026, 02:00 IST
+- **Commit:** `TBD`
+- **Decision:** `misc/diagnose.py` gets `--llm-run`, which scores an LLM rerank run against the same 30-code hybrid pool that `src/coder.py` reranks. Each note is classified as kept, rescued, harmed, pool-miss or outside-pool. The earlier diagnostic only measured retriever recall and never read the LLM's picks.
+- **Reasoning:**
+  - Decision 12's LLM score (22.9 / 75) is below the hybrid retriever alone (31.7 / 75), but the score does not say whether the LLM or the retriever is at fault. The split by note shows which.
+  - The pool and top-3 are rebuilt with `CANDIDATES` and `MAX_NOTE_CHARS` imported from `src/coder.py`, so the diagnostic cannot drift from the coder.
+
+- **Command:** `uv run --offline python -m misc.diagnose --hybrid --llm-run predictions\llm_run.jsonl` (60 dev notes, SapBERT, `predictions\llm_run.jsonl`)
+
+- **Hybrid retriever recall (exact, all 60 notes):**
+
+  | R@1 | R@3 | R@10 | R@30 | R@50 |
+  |---|---|---|---|---|
+  | 0.350 | 0.567 | 0.783 | 0.967 | 1.000|
+
+  - Family recall: R@1 0.633, R@3 0.783, R@10 0.867, R@30 0.967, R@50 1.000
+  - Retrieval failures (no gold in top-50): 0
+  - Ranking failures (gold in top-50, not top-3): 26
+  - Family-only misses (right disease in top-3, wrong specificity): 13
+  - Symptom/injury/context slots (chapters 21-26) in top-3: 16/180 = 0.089
+
+- **LLM rerank on top of the hybrid pool:**
+
+  | group | n | pool R@30 | retr@1 | LLM@1 | retr@3 | LLM@3 | retr fam@3 | LLM fam@3 | rescued | harmed | pool-miss | outside pool |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | all | 60 | 58 | 21 | 14 | 34 | 27 | 47 | 41 | 5 | 12 | 19 | 2 |
+  | ambient_transcript | 15 | 15 | 6 | 6 | 12 | 9 | 13 | 11 | 0 | 3 | 3 | 0 |
+  | short_consult | 16 | 14 | 7 | 2 | 9 | 4 | 12 | 9 | 1 | 6 | 4 | 2 |
+  | typed_consult | 29 | 29 | 8 | 6 | 13 | 14 | 22 | 21 | 4 | 3 | 12 | 0 |
+
+  - Net top-3 change from the LLM: **-7 notes** (rescued 5, harmed 12).
+  - The LLM missed gold that was in the pool for 19 notes.
+  - The LLM's top-1 and top-3 match `score.py` (0.233 and 0.450), so the diagnostic agrees with the official scorer.
+
+- **Observation:** The LLM is the bottleneck, not retrieval. Gold is in the pool for 58/60 notes, but the LLM turns 12 correct top-3 lists into misses and rescues only 5. Harm is concentrated in `short_consult` (6 harmed, 1 rescued).
+
+- **Alternatives considered:**
+  - Keep the retriever's top-1 unless the LLM is confident.
+  - Use a larger model. This is not measured yet. (openAI or Anthropic API)
+
+## Decision 14: OpenAI gpt-4o-mini rerank on top of the hybrid retriever
+
+- **Date/time:** 12-Nov-2026, 10:31 IST
+- **Commit:** `TBD`
+- **Decision:** Use the OpenAI API with `gpt-4o-mini` as the reranker on top of the hybrid retriever (SapBERT embeddings with RRF fusion, assessment extraction and chapter prior). The LLM chooses the final codes from the hybrid candidate pool, and the retriever supplies the candidates. The run uses `--api` with `OPENAI_API_KEY` set, instead of the local Qwen model from Decisions 11 to 13.
+- **Reasoning:**
+  - The local Qwen rerank was slow on CPU (about 32 min for 60 notes) and lowered the score (Decisions 12 and 13). Its misses were mainly reranking errors, since gold was in the pool for 58/60 notes.
+  - A hosted, larger model should handle the ranking step better than a 1.5B local model, at a small per-note API cost.
+
+- **Results (60 dev notes, hybrid retriever + `gpt-4o-mini` rerank, official `score.py`):**
+  - Slice A (n=60)
+  - Top-1 accuracy: 0.567
+  - Top-3 accuracy: 0.850
+  - Points: 49.6 / 75
+  - Missing predictions: 0
+  - Invalid codes: 0
+  - Duplicate IDs: 0
+  - **Score: 49.6 / 75**
+
+- **Comparison:**
+
+| Run | Top-1 | Top-3 | Score |
+|---|---|---|---|
+| Hybrid retriever only (Decision 09) | .350 | .567 | 31.7 / 75 |
+| Local Qwen2.5-1.5B rerank (Decision 12) | .233 | .450 | 22.9 / 75 |
+| **Hybrid + gpt-4o-mini rerank (this run)** | **.567** | **.850** | **49.6 / 75** |
+
+- **Observation:** The score rises by 17.9 points over the retriever alone and 26.7 points over the local LLM. Top-3 rises from .567 to .850, so the ranking failures that were the main problem in Decision 08 and Decision 13 are largely fixed by a stronger reranker. Retrieval is unchanged, so the pool ceiling still applies (hybrid R@30 .967 in Decision 13). Notes with the right disease family but the wrong specificity remain a likely source of the remaining misses.
+
+- **Limits:**
+  - Measured on the 60 dev notes only. The hidden set may cover chapters and styles not in dev, so this is not a generalisation claim.
+  - Per-note diagnostic (`misc\diagnose.py --llm-run`) has not been run for this predictions file, so the rescued/harmed split is not yet known.
+  - Latency and API cost for this run are not recorded here.
+
+- **Alternatives considered:**
+  - OpenAI API (`gpt4.1-mini`) as the option
+  - Anthropic API (`claude-haiku-4-5` is the default fallback in `src\coder.py`). Not measured.
+  
+
+
+
+
+
 
 
 

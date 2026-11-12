@@ -49,7 +49,7 @@ python score.py --gold 'data/dev_notes.jsonl' \
 
 <!-- python -m src.coder 'data/dev_notes.jsonl' 'predictions/llm_run.jsonl'
 
-python score.py --gold 'data\dev_notes.jsonl' --pred 'predictions\llm_run.jsonl' --mms 'data\mms-2026-01.json' -->
+python score.py --gold 'data\dev_notes.jsonl' --pred 'predictions\llm_run.jsonl' --mms 'data\mms-2026-01.json' --per-note 'misc/llm_run_per_note.jsonl' -->
 
 
 ### Advanced Options
@@ -74,6 +74,9 @@ python -m misc.diagnose --semantic --hybrid
 
 # Compare against the previous MiniLM diagnostic
 python -m misc.diagnose --semantic --hybrid --model all-MiniLM-L6-v2
+
+# Score an LLM rerank run against the hybrid candidate pool it reranks
+python -m misc.diagnose --hybrid --llm-run predictions/llm_run.jsonl
 ```
 
 The diagnostic uses SapBERT's CLS embeddings by default; the production coder
