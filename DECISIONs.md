@@ -529,3 +529,65 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 - **Alternatives Considered :**
   - Self-consistency with temperature 0 only: rejected, because identical greedy calls give identical votes.
 
+## Decision 21: Diagnosing the top-3 misses before the next change
+
+- **Date:** 2026-11-12 15:55 IST.
+- **Commit:** added in the commit that includes this entry (parent `fe3ae34`).
+
+- **Context:** The run in `misc/llm_run_sc_per_note.jsonl` (shipped config, `SELF_CONSISTENCY_SAMPLES = 1`, residual prompt) scores top-1 0.833 (50/60), top-3 0.867 (52/60), 63.3 / 75. Top-3 needs 54/60 to reach 0.90.
+
+- **Diagnosis (8 top-3 misses):**
+
+| Note | Gold | Predicted | Type |
+|---|---|---|---|
+| dev-002 | CA00, CA07.0 (viral URTI) | 1E1Z, 9B72.0Z, 1D86 | Wrong category, vocabulary |
+| dev-008 | 1G05 (jiggers) | 1G0Z, 1G04.Z, 1G04.Y | Right block, wrong leaf, vocabulary |
+| dev-028 | DA22.Z | DD90.2, 9B70, LD2H.4 | Wrong category |
+| dev-033 | FA25.2Z | FA25.0, FA25.20, FA25 | Right family, wrong specificity |
+| dev-051 | 5B52 | MG29.3, CB01, MG29 | Wrong category, symptom codes |
+| dev-056 | JA63.2 | QA43.Z, 5B81.01, 5B80.01 | Wrong category |
+| dev-057 | 5A00.2Z | 5A00.22, 5A00.01, 5A00 | Right family, wrong specificity |
+| dev-060 | 5B81.01 | 5A0Z, 5A0Y, 5A02.3 | Wrong category |
+
+- **Summary:** 5 of 8 are wrong category; 3 are right family with wrong specificity.
+
+- **Pool check (done, rebuilt with `retrieve_candidates` and the default embedding model):**
+  - The wrong picks are all in the 30-candidate pool, so the LLM chooses from the pool correctly and the pool is not the cause of those picks.
+  - The gold code is **not** in the pool for 6 of the 8 misses (dev-002, dev-008, dev-028, dev-051, dev-056, dev-060). A rerank cannot put a code in the top 3 that the pool does not contain. These are retrieval (vocabulary) misses.
+  - The gold is in the pool for 2 of the 8: dev-033 (`FA25.2Z` at rank 6) and dev-057 (`5A00.2Z` at rank 14). These are specificity misses.
+  - Correction: my first table above has the wrong-category label for dev-051, dev-056 and dev-060 as a reranking problem. The gold is absent from the pool for those notes, so it is a retrieval problem.
+
+- **Cause found in the code:** `specific_code` in `src/coder.py` turned a non-leaf pick into its best-ranked named child in pool order, before trying the unspecified `.Z` child. Decision 18 documents the rule as "a non-leaf pick becomes `<parent>.Z`". The code did not follow that rule.
+
+- **Change:** `specific_code` now returns the `.Z` child for a non-leaf pick, and falls back to the best-ranked named child only when no `.Z` child exists. Nothing else changed.
+
+- **Results (60 dev notes, `score.py`, same model `gpt-4.1-mini`, three full runs):**
+
+| Run | Top-1 | Top-3 | Score |
+|---|---|---|---|
+| Fixed rule, run 1 | 0.883 | 0.883 | 66.2 / 75 |
+| Fixed rule, run 2 | 0.850 | 0.867 | 64.2 / 75 |
+| Fixed rule, run 3 | 0.900 | 0.900 | 67.5 / 75 |
+| Previous shipped config, reruns 1 and 2 (Decision 20) | 0.800 / 0.833 | 0.850 / 0.867 | 61.2 / 63.3 |
+
+  - Mean of the three fixed runs: 66.0 / 75 (top-1 0.878, top-3 0.883), against 62.3 for the previous config.
+  - Cost: about $0.08 per 60-note run.
+  - Caveat: three runs, a spread of about 3 points, and the dev set is also the set used for tuning. This is a measured gain on dev, not proof of a hidden-set gain.
+  - Top-3 misses per run: run 1 = dev-002, 008, 028, 033, 051, 056, 060; run 2 = those 7 plus dev-042; run 3 = dev-002, 008, 028, 051, 056, 060. The six notes that miss in all three runs are the vocabulary misses above. dev-033 (specificity) was fixed in run 3 only.
+
+- **Options considered:**
+  1. Check candidate-pool recall for these 8 notes first. Decides whether the wrong-category misses are retrieval or ranking problems.
+  2. LLM term extraction before retrieval (plan Stage 1B). Targets dev-002, dev-008, dev-056 (vocabulary gaps).
+  3. Specificity handling for the family misses (dev-033, dev-057). Any rule must be general, not written for one note.
+  4. More self-consistency samples to fill top-3. Rejected as default: 3 samples cost about $0.26 per 60 notes, about $1.30 per 300 notes, which exceeds the $1 budget. Self-consistency ranks by vote, so it mainly helps top-1.
+
+- **Decision:** Step 1 (pool check) first, as agreed. Pool check result: the gold is missing from the pool for 6 of 8 misses, so reranking cannot fix them. The one generic code fault found (non-leaf pick rule, see Pool check above) is fixed and kept, because it follows the documented rule and improved the three-run mean. Option 2 (term extraction before retrieval, plan Stage 1B) is the next step for the 6 vocabulary misses, and is not done yet.
+
+- **Observation:** The gap to 90% on dev is 2 notes. Dev is also the set used for tuning, so a 90% dev top-3 is not evidence the hidden score will reach it. Hidden-set generalisation (Stage 6) matters more than these 2 notes.
+
+- **Revisit:** Option 2 (LLM term extraction before retrieval) for the 6 vocabulary misses, with a check that it does not add new top-3 misses. Re-check the budget if the sample count changes. Repeat the fixed config over more runs before calling it the shipped default.
+
+- **Alternatives Considered :**
+- Check pool recall for these 8 notes. Log whether the gold is in the 30-candidate pool. If it isn't, the fix is retrieval, not reranking.
+- Term extraction before retrieval. Have the LLM extract the diagnosis as English clinical terms and retrieve with those too. This targets dev-002, dev-008 and dev-056.
+- Specificity handling for the family misses. Look at how .Z and named children are ranked in the prompt for dev-033 and dev-057. Keep any rule general, not written for one note. ( this is for 3 family but specificity misses)

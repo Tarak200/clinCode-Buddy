@@ -373,15 +373,15 @@ def named_leaves(prefix: str, ordered: list[str], catalogue: Catalogue) -> list[
 
 
 def specific_code(code: str, ordered: list[str], catalogue: Catalogue) -> str:
-    """A non-leaf pick becomes its best-ranked named child, else its unspecified (.Z) child."""
+    """A non-leaf pick becomes its unspecified (.Z) child, else its best-ranked named child."""
     if catalogue[code].leaf:
         return code
+    unspecified = unspecified_code(code)
+    if unspecified in catalogue:
+        return unspecified
     prefix = code if "." in code else f"{code}."
     children = named_leaves(prefix, ordered, catalogue)
-    if children:
-        return children[0]
-    unspecified = unspecified_code(code)
-    return unspecified if unspecified in catalogue else code
+    return children[0] if children else code
 
 
 def apply_rules(codes: list[str], ordered: list[str], catalogue: Catalogue) -> list[str]:
