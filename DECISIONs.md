@@ -359,23 +359,62 @@ The medical aware embedding model is working much better with 0 retrieval failur
   - **Score: 60.8 / 75**
 - **Comparison with the previous `gpt-4.1-mini` run:** Top-1 stayed at 0.783; top-3 increased from 0.850 to 0.867, and the score rose from 60.4 to 60.8 / 75.
 
+- **Observation :**
+  - even though there is a marginal improvement, the cost increased is ~27% because of 50 retrieved candidates being used for re-ranking instead of 30.
+
 - **Improvements needed :**
  - Had to increase the top-3 accuracy to 1.00 so that they can be reranked to top-1 for better score
  - To keep the most relevant code in top-1 
 
 - **Alternatives Considered :**
-  - to increase the candidates being retrieved to 50 - as R@50 is 1.00 
+  - using the tree-hierarchy mms-data-2026 of diseases and codes to improve ranking
+  - prompt engineering by using fewshot, CoT
+  - using a larger model than gpt-4.1-mini
+
+## Decision 16: Few-shot (3 demostrations) + CoT for better task understanding
+
+- **Observation:** There is no increase in the LLM's performance from these prompt engineering techniques (few-shot examples and CoT reasoning). The score and top-1/top-3 accuracy did not improve over the previous rerank prompt.
+
+- **Alternatives Considered :**
   - using the tree-hierarchy mms-data-2026 of diseases and codes to improve ranking
   - using a larger model than gpt-4.1-mini
 
 
+## Decision 17: Using the multi-lingual embedding model
 
+- **Model:** `andorei/BERGAMOT-multilingual-GAT`
+- **Results (60 notes):**
+  - Slice A (n=60)
+  - Top-1 accuracy: 0.617
+  - Top-3 accuracy: 0.683
+  - Points: 47.9 / 75
+  - Missing predictions: 0
+  - Invalid codes: 0
+  - Duplicate IDs: 0
+  - **Score: 47.9 / 75**
 
+- **Model:** `FremyCompany/BioLORD-2023-M`
+- **Results (60 notes):**
+  - Slice A (n=60)
+  - Top-1 accuracy: 0.750
+  - Top-3 accuracy: 0.783
+  - Points: 57.1 / 75
+  - Missing predictions: 0
+  - Invalid codes: 0
+  - Duplicate IDs: 0
+  - **Score: 57.1 / 75**
 
+- **Follow-up results (50 candidates, 60 notes):**
+  - Slice A (n=60)
+  - Top-1 accuracy: 0.717
+  - Top-3 accuracy: 0.783
+  - Points: 55.4 / 75
+  - Missing predictions: 0
+  - Invalid codes: 0
+  - Duplicate IDs: 0
+  - **Score: 55.4 / 75**
 
+- **Observation:** Increasing the candidate pool from 30 to 50 did not improve the result: top-3 accuracy stayed at 0.783, while top-1 fell from 0.750 to 0.717 and the score decreased from 57.1 to 55.4 / 75.
 
-
-
-
-
-
+- **Alternative Considered :**
+  - use the tree hierarchy knowledge
