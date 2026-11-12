@@ -5,7 +5,9 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     HF_HOME=/opt/hf-cache \
-    HF_HUB_DISABLE_TELEMETRY=1
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
 
 WORKDIR /app
 
@@ -20,8 +22,10 @@ RUN pip install --no-cache-dir uv \
     && pip install --no-cache-dir -r requirements-cpu.txt \
     && rm -f requirements.txt requirements-cpu.txt
 
-# Download the embedding model at build time. Run time has no access to Hugging Face.
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('FremyCompany/BioLORD-2023-M')"
+# Download the pinned BioLORD-2023-M revision at build time. The build has network access; the run
+# does not (HF_HUB_OFFLINE=1 above), so the model must be in the image before the container starts.
+ARG BIOLORD_REVISION=4ea2ea2c89ef63365f7fcd91406a0cd8ac36d2e2
+RUN HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('FremyCompany/BioLORD-2023-M', revision='${BIOLORD_REVISION}')"
 
 COPY src/ src/
 COPY data/ data/
@@ -32,9 +36,8 @@ RUN printf '%s\n' '{"id": "warmup", "text": "fever and cough"}' > /tmp/warmup.js
     && python -m src.coder --hybrid /tmp/warmup.jsonl /tmp/warmup_out.jsonl \
     && rm -f /tmp/warmup.jsonl /tmp/warmup_out.jsonl
 
-# Offline mode stops the model libraries from contacting Hugging Face at run time.
-ENV HF_HUB_OFFLINE=1 \
-    TRANSFORMERS_OFFLINE=1
-
 ENTRYPOINT ["python", "-m", "src.coder"]
 CMD ["/in/notes.jsonl", "/out/predictions.jsonl"]
+
+# Score the dev predictions after the run (score.py is not in the image, so mount it):
+# docker compose run --rm -v "${PWD}/score.py:/app/score.py" --entrypoint python coder score.py --gold /app/data/dev_notes.jsonl --pred /out/dev_predictions.jsonl --mms /app/data/mms-2026-01.json

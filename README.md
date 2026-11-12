@@ -4,14 +4,22 @@ Assigns up to three ICD-11 MMS codes to each clinical note. A hybrid retriever (
 
 ## Run
 
-From a clean clone, put the notes at `in/notes.jsonl`, then run:
+From a clean clone, put the notes at `in/dev_notes.jsonl`, then run:
 
 ```
 docker compose build
 docker compose run coder /in/notes.jsonl /out/predictions.jsonl
 ```
 
-Predictions are written to `out/predictions.jsonl`. The image already contains the BioLORD-2023-M model and the catalogue embeddings, so `run` needs no network access beyond the model APIs.
+On Windows, run these commands in PowerShell or cmd. In Git Bash, Windows rewrites `/in/...` and `/out/...` into `C:/Program Files/Git/...` paths and the container cannot find the files. To keep using Git Bash, prefix the command with `MSYS_NO_PATHCONV=1`:
+
+```
+MSYS_NO_PATHCONV=1 docker compose run coder /in/notes.jsonl /out/predictions.jsonl
+```
+
+Predictions are written to `out/predictions.jsonl`. The image already contains the catalogue embeddings and the BioLORD-2023-M model. The build downloads the model at the pinned revision (`BIOLORD_REVISION` in the Dockerfile), so `docker compose build` needs network access to Hugging Face. The run itself sets `HF_HUB_OFFLINE=1` and needs no network access beyond the model APIs.
+
+The whole process, from `docker compose build` to a finished grading run, is assumed to take under one hour. The model is downloaded once during the build and baked into the image, so no download happens at run time.
 
 API keys are optional. Set them in the shell, or copy `.env.example` to `.env`:
 
@@ -33,7 +41,7 @@ uv run python score.py --gold data/dev_notes.jsonl --pred out/dev_predictions.js
 
 Modes: default (LLM if a key is set, otherwise retriever only), `--hybrid` (retriever only, no API calls), `--api` (requires a key).
 
-**Status:** Docker is not installed on the machine used for development, so the image build has not been run. The Python path was run end to end with the commands above.
+**Status:** The image was built and run end to end with Docker (see Final Docker run below). The Python path was also run end to end with the commands above.
 
 ## Scores (official `score.py`)
 
@@ -49,9 +57,32 @@ Dev validation for the 70.8 run: 60 notes, 0 missing predictions, 0 invalid code
 
 My estimate of the hidden score (out of 100, a judgement and not a measurement) is about 39 to 46 with no key and about 73 to 88 with an LLM. It is built from two parts: core 25 to 29 (no key) or 55 to 65 (LLM), discounted from the dev scores for tuning; and generalisation 14 to 17 (no key) or 18 to 23 (LLM), from the synthetic set.
 
+## Final Docker run
+
+Run on the 60 dev notes with `docker compose build` followed by `docker compose run coder /in/dev_notes.jsonl /out/dev_predictions.jsonl`, using the LLM rerank:
+
+| Metric | Value |
+|---|---|
+| Score (official `score.py`) | 70.0 / 75 |
+| Top-1 / Top-3 | 0.917 / 0.967 |
+| Missing predictions / invalid codes / duplicate ids | 0 / 0 / 0 |
+| LLM calls | 60 (parse-hit rate 100%, failed 0, skipped 0) |
+| Changed from retriever | 80% |
+| LLM spend | $0.0930 (about $0.0016 per note) |
+| Image build time | about 38 min (2279.8 s) |
+| Run time, end to end with LLM calls | about 2 min 3 s |
+
+Scoring is the final step, run after the prediction command has written `out/dev_predictions.jsonl`:
+
+```
+docker compose run --rm -v "${PWD}/score.py:/app/score.py" --entrypoint python coder score.py --gold /app/data/dev_notes.jsonl --pred /out/dev_predictions.jsonl --mms /app/data/mms-2026-01.json
+```
+
+`score.py` is not in the image, so the command mounts it in and overrides the entrypoint. It prints the same counts and score as above. In Git Bash, prefix the command with `MSYS_NO_PATHCONV=1` as above.
+
 ## Data added
 
-- **Catalogue embeddings:** `data/.embeddings_cache/mms-2026-01_FremyCompany_BioLORD-2023-M.pkl`, computed from `data/mms-2026-01.json` with BioLORD-2023-M. The model is downloaded at image build time.
+- **Catalogue embeddings:** `data/.embeddings_cache/mms-2026-01_FremyCompany_BioLORD-2023-M.pkl`, computed from `data/mms-2026-01.json` with BioLORD-2023-M. The BioLORD-2023-M model is downloaded at the pinned revision during `docker compose build` and stored in `/opt/hf-cache` inside the image. Nothing model-related is committed to git.
 - **Abbreviation table and chapter priors:** written by hand in `src/coder.py` and `src/retrieval/priors.py`. The chapter multipliers come from the dev-set analysis in Decision 09.
 - **Synthetic evaluation notes:** 104 notes in `data/synthetic/synthetic_eval.jsonl`, 34 of them non-English. They cover three note styles (typed consult, ambient transcript, short consult). Its gold codes were not checked by a clinician, so it is a weaker signal than the dev set. It is not used at run time.
 

@@ -10,6 +10,7 @@ __pycache__
 # Local-only material, not needed in the image
 misc
 models
+hf-cache
 predictions
 predictions_dump
 data_exploration

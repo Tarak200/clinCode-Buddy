@@ -39,3 +39,6 @@ data/.embeddings_prev_data/
 !/in/.gitkeep
 /out/*
 !/out/.gitkeep
+
+# embedding model
+hf-cache/
