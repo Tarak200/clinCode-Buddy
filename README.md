@@ -39,6 +39,8 @@ uv run python -m src.coder --hybrid data/dev_notes.jsonl out/dev_predictions.jso
 uv run python score.py --gold data/dev_notes.jsonl --pred out/dev_predictions.jsonl --mms data/mms-2026-01.json
 ```
 
+On Linux, uv installs the CPU-only PyTorch build, including in the Docker image.
+
 Modes: default (LLM if a key is set, otherwise retriever only), `--hybrid` (retriever only, no API calls), `--api` (requires a key).
 
 **Status:** The image was built and run end to end with Docker (see Final Docker run below). The Python path was also run end to end with the commands above.

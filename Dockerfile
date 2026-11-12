@@ -2,8 +2,11 @@
 # At run time the container only calls the OpenAI and Anthropic APIs.
 FROM python:3.12-slim
 
+COPY --from=ghcr.io/astral-sh/uv:0.11.8 /uv /uvx /bin/
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PATH="/app/.venv/bin:$PATH" \
     HF_HOME=/opt/hf-cache \
     HF_HUB_DISABLE_TELEMETRY=1 \
     HF_HUB_OFFLINE=1 \
@@ -13,14 +16,8 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 
-# Install the locked dependencies with CPU-only torch. The grading box has no GPU,
-# so the CUDA wheels would only make the image larger.
-RUN pip install --no-cache-dir uv \
-    && uv export --frozen --no-hashes --no-emit-project --no-dev -o requirements.txt \
-    && grep -v -E '^(torch|nvidia-|triton)' requirements.txt > requirements-cpu.txt \
-    && pip install --no-cache-dir torch==2.15.0 --extra-index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir -r requirements-cpu.txt \
-    && rm -f requirements.txt requirements-cpu.txt
+# Install locked dependencies, including CPU-only torch for Linux.
+RUN uv sync --locked --no-dev --no-install-project --no-cache
 
 # Download the pinned BioLORD-2023-M revision at build time. The build has network access; the run
 # does not (HF_HUB_OFFLINE=1 above), so the model must be in the image before the container starts.
