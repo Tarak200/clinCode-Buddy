@@ -5,6 +5,7 @@ Then one LLM call per note picks up to 3 codes from those candidates, given the 
 text and a note excerpt. The LLM also names the ICD-11 category it thinks holds the main
 diagnosis. If that category has leaves the retriever missed, they are added and the LLM
 ranks once more. A deterministic rule then replaces a non-leaf pick with its named child, or its .Z.
+The whole pass is repeated SELF_CONSISTENCY_SAMPLES times (the first greedy, the rest sampled) and the most common top-1 wins.
 The LLM is OpenAI if OPENAI_API_KEY is set, else Anthropic if
 ANTHROPIC_API_KEY is set. If neither key is set, the hybrid retriever is used without an LLM.
 Any LLM problem keeps the retriever ranking for that note.
@@ -52,6 +53,9 @@ NOTE_TAIL_CHARS = 1200
 LLM_DEADLINE_S = 50 * 60  # past this, remaining notes keep the retriever ranking
 RERANK_MAX_TOKENS = 256  # short reasoning, the category and the picks object
 EXPAND_MAX_LEAVES = 20  # leaves added from a named category the retriever missed
+# Self-consistency: the first pass is greedy, the others sample; the most common top-1 wins
+SELF_CONSISTENCY_SAMPLES = 1
+SAMPLE_TEMPERATURE = 0.7
 # Stage 5 rules, on by default; switching one off is only for ablation runs
 RECALL_FALLBACK = True
 SPECIFIC_CHILD_RULE = True
@@ -73,7 +77,7 @@ Think step by step in the "reasoning" field, in at most five short sentences:
 2. If a diagnosis is stated, drop symptom and injury candidates. Keep a symptom only when there is no diagnosis.
 3. Name the ICD-11 category of the main diagnosis in "category": the part of its code before the dot, for example "1F23" or "BD71". Give it even if no candidate has that category. Use "" when there is no diagnosis.
 4. Verify each candidate: say which current diagnosis it codes, or that it does not fit. Drop any candidate that fits no current diagnosis.
-5. Rank the verified candidates. The first pick must be the one most relevant to the main diagnosis. For each diagnosis, check the top candidate first, then the others in list order, and prefer the most specific candidate the note supports; use an unspecified (.Z) code only when no subtype is supported.
+5. Rank the verified candidates. The first pick must be the one most relevant to the main diagnosis. For each diagnosis, check the top candidate first, then the others in list order, and prefer the most specific candidate the note supports. A named child code (for example 1F40.0) needs the note to state its specific feature; when the note gives only the general diagnosis, the unspecified (.Z) code is correct, even if a named child also fits.
 6. For transcripts, use the clinician's conclusion, not the patient's questions.
 
 Then fill "picks" with 1 to 3 different candidate numbers, best first: the main diagnosis, then the next most relevant candidate, then a second current diagnosis if there is one. If nothing fits well, still return the closest candidate.
@@ -145,14 +149,16 @@ class LLM:
         price_in, price_out = PRICES.get(self.model, (1.0, 5.0))  # unknown model: assume dear
         return (tokens_in * price_in + tokens_out * price_out) / 1_000_000
 
-    def _call(self, system: str, user: str, max_tokens: int, schema: dict | None = None) -> tuple[str, int, int]:
+    def _call(self, system: str, user: str, max_tokens: int, schema: dict | None = None, temperature: float = 0.0) -> tuple[str, int, int]:
         if self.provider == "openai":
+            # A fixed seed would make every sample identical, so it is only set for the greedy call
+            repeatable = {"seed": 0} if temperature == 0 else {}  # best-effort repeatability; the API does not guarantee identical output
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
                 max_tokens=max_tokens,
-                temperature=0,
-                seed=0,  # best-effort repeatability; the API does not guarantee identical output
+                temperature=temperature,
+                **repeatable,
                 # Structured outputs guarantee the schema, not just valid JSON
                 response_format=(
                     {"type": "json_schema", "json_schema": {"name": "picks", "schema": schema, "strict": True}}
@@ -170,13 +176,13 @@ class LLM:
             system=system,
             messages=messages,
             max_tokens=max_tokens,
-            temperature=0,
+            temperature=temperature,
         )
         usage = response.usage
         text = response.content[0].text
         return (PICKS_PREFILL + text if schema else text), usage.input_tokens, usage.output_tokens
 
-    def ask_json(self, system: str, user: str, max_tokens: int = 300, schema: dict | None = None) -> dict:
+    def ask_json(self, system: str, user: str, max_tokens: int = 300, schema: dict | None = None, temperature: float = 0.0) -> dict:
         """Return the parsed JSON answer. Tries twice; raises on failure or budget."""
         worst_case = self._price(len(system + user) // 3, max_tokens)  # ~3 chars/token
         last_error: Exception | None = None
@@ -187,7 +193,7 @@ class LLM:
                 if self.spent + worst_case > BUDGET_USD:
                     raise BudgetExceeded(f"budget of ${BUDGET_USD} reached")
             try:
-                text, tokens_in, tokens_out = self._call(system, user, max_tokens, schema)
+                text, tokens_in, tokens_out = self._call(system, user, max_tokens, schema, temperature)
             except Exception as error:
                 last_error = error
                 continue
@@ -324,7 +330,7 @@ def write_predictions(path: Path, predictions: list[dict]) -> None:
     os.replace(temp, path)
 
 
-def ask_rerank(llm: LLM, note_block: str, candidates: dict[str, str], catalogue: Catalogue) -> tuple[list[str], str]:
+def ask_rerank(llm: LLM, note_block: str, candidates: dict[str, str], catalogue: Catalogue, temperature: float = 0.0) -> tuple[list[str], str]:
     """One LLM call. Returns the picked codes (best first) and the category the LLM named."""
     ordered = list(candidates)
     lines = []
@@ -332,7 +338,7 @@ def ask_rerank(llm: LLM, note_block: str, candidates: dict[str, str], catalogue:
         parent = catalogue.parent_title(code)
         lines.append(f"{number}. {code} | {title}" + (f" | parent: {parent}" if parent else ""))
     prompt = f"{note_block}\n\nCANDIDATES (number. code | title | parent):\n" + "\n".join(lines)
-    answer = llm.ask_json(RERANK_SYSTEM, prompt, max_tokens=RERANK_MAX_TOKENS, schema=picks_schema(len(ordered)))
+    answer = llm.ask_json(RERANK_SYSTEM, prompt, max_tokens=RERANK_MAX_TOKENS, schema=picks_schema(len(ordered)), temperature=temperature)
 
     # The model answers with 1-based candidate numbers, see RERANK_SYSTEM
     picks: list[str] = []
@@ -383,8 +389,25 @@ def apply_rules(codes: list[str], ordered: list[str], catalogue: Catalogue) -> l
     if not SPECIFIC_CHILD_RULE:
         return codes
     return dedupe([specific_code(code, ordered, catalogue) for code in codes])
+def rerank_once(llm: LLM, note_block: str, candidates: dict[str, str], catalogue: Catalogue, temperature: float) -> tuple[list[str], bool]:
+    """One pass: the rerank, an optional second rerank with the named category's missing leaves, then the rules. Returns the top-3 codes and whether the LLM gave a usable pick."""
+    picks, category = ask_rerank(llm, note_block, candidates, catalogue, temperature)
+    if RECALL_FALLBACK and category in catalogue.leaves_by_category:
+        extra = catalogue.missing_leaves(category, candidates)[:EXPAND_MAX_LEAVES]
+        if extra:
+            expanded = {**candidates, **{code: catalogue[code].title for code in extra}}
+            second, _ = ask_rerank(llm, note_block, expanded, catalogue, temperature)
+            if second:
+                picks, candidates = second, expanded
+
+    ordered = list(candidates)
+    codes = fill(picks, ordered)
+    codes = fill(apply_rules(codes, ordered, catalogue), ordered)[:3]
+    return codes, bool(picks)
+
+
 def llm_codes(llm: LLM, text: str, candidates: dict[str, str], catalogue: Catalogue) -> tuple[list[str], str]:
-    """LLM rerank, an optional second rerank with the named category's missing leaves, then the rules. Returns the codes and an outcome label."""
+    """Self-consistent LLM rerank: several passes, the most common top-1 wins, then its full list. Returns the codes and an outcome label."""
     assessment = extract_assessment(text)
     if assessment:
         note_block = f"<assessment>\n{assessment}\n</assessment>\n\n<note>\n{text[-NOTE_TAIL_WITH_ASSESSMENT:]}\n</note>"
@@ -392,19 +415,27 @@ def llm_codes(llm: LLM, text: str, candidates: dict[str, str], catalogue: Catalo
         note_block = f"<note>\n{note_excerpt(text)}\n</note>"
 
     retriever_order = list(candidates)
-    picks, category = ask_rerank(llm, note_block, candidates, catalogue)
-    if RECALL_FALLBACK and category in catalogue.leaves_by_category:
-        extra = catalogue.missing_leaves(category, candidates)[:EXPAND_MAX_LEAVES]
-        if extra:
-            expanded = {**candidates, **{code: catalogue[code].title for code in extra}}
-            second, _ = ask_rerank(llm, note_block, expanded, catalogue)
-            if second:
-                picks, candidates = second, expanded
+    passes: list[tuple[list[str], bool]] = []
+    for sample in range(SELF_CONSISTENCY_SAMPLES):
+        temperature = 0.0 if sample == 0 else SAMPLE_TEMPERATURE
+        try:
+            passes.append(rerank_once(llm, note_block, candidates, catalogue, temperature))
+        except BudgetExceeded:
+            raise
+        except Exception:
+            if sample == 0:
+                raise  # without the greedy pass there is nothing to fall back on
+            # a failed extra sample only leaves the vote with fewer passes
 
-    ordered = list(candidates)
-    parsed = bool(picks)
-    codes = fill(picks, ordered)
-    codes = fill(apply_rules(codes, ordered, catalogue), ordered)[:3]
+    usable = [codes for codes, parsed in passes if parsed]
+    if usable:
+        tally = Counter(codes[0] for codes in usable)
+        best = max(tally.values())
+        # the earliest pass (the greedy one first) among the most common top-1
+        codes = next(codes for codes in usable if tally[codes[0]] == best)
+        parsed = True
+    else:
+        codes, parsed = passes[0]
     if not parsed:
         outcome = "no_pick"
     elif codes != retriever_order[:3]:

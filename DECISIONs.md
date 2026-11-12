@@ -490,3 +490,42 @@ The medical aware embedding model is working much better with 0 retrieval failur
 - **Alternatives Considered :**
   - Swapping in a larger model without changing the method (this is what this decision did; it did not separate the models).
 
+## Decision 20: Self-consistency and residual-vs-named prompt rule for the Stage 5 rerank
+
+- **Change (`src/coder.py`):**
+  - Self-consistency: the code supports a majority vote over `SELF_CONSISTENCY_SAMPLES` rerank passes (first pass greedy, `temperature=0`, `seed=0`; the rest sample at `SAMPLE_TEMPERATURE = 0.7`). The default is set to `1` (greedy only), because the 3-sample vote costs about 3x the LLM spend and did not beat greedy on its own (see results).
+  - Prompt step 5: a named child code needs its feature stated in the note. When the note gives only the general diagnosis, the `.Z` code is correct even if a named child also fits.
+
+- **Error analysis (Decision 18 run, 14 top-1 misses, `misc/llm_run_stage5_post_per_note.jsonl`):**
+  - Residual vs named child: 8 (gold is `.Z`, the pick is a named leaf or a different `.Z`). Gold was in the 30-candidate pool in all 8, so this is a ranking problem.
+  - Wrong category: 6. The gold category was not in the retriever pool for any of them, so only the recall fallback can help, and it helps only when the LLM names the right category.
+  - Wrong leaf within the right category: 1 (`CA40.Z` vs `CA40.0Z`).
+  - Gold is a `.Z` code in 14 notes; top-1 is right in only 5 of them.
+
+- **Results (60 notes, single runs, `score.py`):**
+
+| Configuration | Top-1 | Top-3 | Score |
+|---|---|---|---|
+| Baseline (current code, seed 0) | 0.783 | 0.883 | 61.2 / 75 |
+| Self-consistency (3) only | 0.783 | 0.867 | 60.8 / 75 |
+| Residual prompt only | 0.817 | 0.850 | 62.1 / 75 |
+| Residual prompt + self-consistency (3) | 0.817 | 0.867 | 62.5 / 75 |
+| Shipped config (`SELF_CONSISTENCY_SAMPLES = 1`, residual prompt), rerun 1 | 0.800 | 0.850 | 61.2 / 75 |
+| Shipped config (`SELF_CONSISTENCY_SAMPLES = 1`, residual prompt), rerun 2 | 0.833 | 0.867 | 63.3 / 75 |
+
+Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
+
+- **Observation:**
+  - The residual prompt fixed 3 of the 8 residual misses (dev-014, dev-022, dev-023) and broke 2 top-3 hits (dev-007 now picks `CA40.0Z`, dev-057 picks `5A00.Z`).
+  - Self-consistency alone did not help. Most votes agree with the greedy pass, and it costs about 3× the LLM spend ($0.26 vs $0.08 per 60-note run).
+  - The total gain (+1.3 points) is about one note in top-1 and is inside the run-to-run spread from Decision 18 (about 4 points). It is not a measured improvement yet.
+
+- **Next steps:**
+  - Repeat the baseline and the combined config over at least 3 runs each before keeping the change.
+  - Recall for the named category (wrong-category misses): the gold category is outside the pool, so the next step is to retrieve more leaves for the named category, or to log the named category per note to see how often it is the gold one.
+  - Budget: with 3 samples, the $0.85 per-run guard in `src/coder.py` is reached after about 200 notes, after which the rest keep the retriever ranking. The default is 1 for that reason.
+  - Chosen default: `SELF_CONSISTENCY_SAMPLES = 1` (user decision). Two reruns of this exact configuration gave 61.2 and 63.3, not the 62.1 from the first residual-prompt run. That is a spread of about 2 points on identical settings, so greedy decoding is not fully deterministic across runs, and every difference in this table is within noise. The residual prompt change is not shown to help.
+
+- **Alternatives Considered :**
+  - Self-consistency with temperature 0 only: rejected, because identical greedy calls give identical votes.
+
