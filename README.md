@@ -40,8 +40,8 @@ Modes: default (LLM if a key is set, otherwise retriever only), `--hybrid` (retr
 | Setup | Set (scale) | Score | Top-1 | Top-3 |
 |---|---|---|---|---|
 | Retriever only, no key (`--hybrid`) | 60 dev notes, core (of 75) | 29.2 | 0.317 | 0.533 |
-| Best LLM run (gpt-4.1-mini rerank, term extraction, abbreviations; Decision 22, runs 2 and 3) | 60 dev notes, core (of 75) | 70.8 | 0.933 | 0.967 |
-| LLM run 1 of the same setup (Decision 22) | 60 dev notes, core (of 75) | 70.0 | 0.917 | 0.967 |
+| Best LLM run (gpt-4.1-mini rerank, term extraction, abbreviations; Decision 21, runs 2 and 3) | 60 dev notes, core (of 75) | 70.8 | 0.933 | 0.967 |
+| LLM run 1 of the same setup (Decision 21) | 60 dev notes, core (of 75) | 70.0 | 0.917 | 0.967 |
 | Retriever only, no key (`--hybrid`) | 104 synthetic notes, generalisation (of 25) | 16.6 | 0.615 | 0.760 |
 | LLM rerank on the retriever | 104 synthetic notes, generalisation (of 25) | 23.2 | 0.913 | 0.952 |
 
@@ -63,11 +63,13 @@ My estimate of the hidden score (out of 100, a judgement and not a measurement) 
 
 ## AI tooling error I caught
 
-In Decision 21, the first failure table labelled three misses (dev-051, dev-056, dev-060) as reranking problems. The gold code was missing from the candidate pool for those notes, so they were retrieval problems. A pool-membership check showed this, and the table was corrected before the next change. See `DECISIONs.md`.
+In Decision 20, the first failure table labelled three misses (dev-051, dev-056, dev-060) as reranking problems. The gold code was missing from the candidate pool for those notes, so they were retrieval problems. A pool-membership check showed this, and the table was corrected before the next change. See `DECISIONS.md`.
 
 ## Files
 
 - `src/coder.py`: CLI, LLM reranking, budget and deadline handling.
 - `src/retrieval/`: BM25, semantic, RRF fusion, term extraction, chapter priors.
 - `Dockerfile`, `.dockerignore`, `docker-compose.yml`: packaging.
-- `DECISIONs.md`: decision log with dates and commit hashes.
+- `DECISIONS.md`: decision log with dates and commit hashes.
+
+Time spent on this submission: about 31 hours.

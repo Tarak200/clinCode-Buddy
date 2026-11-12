@@ -211,7 +211,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
   - API-based ranking (Claude/GPT) - expensive and limited to ~$1 budget
   - First retrieving 50 and them 30 from the mms dataset to check how llm is helping
 
-## Decision 11: LLM for diagnosis understanding to combat the ranking failures
+## Decision 10: LLM for diagnosis understanding to combat the ranking failures
 
 - **Date/time:** 11-Nov-2026, 23:00 IST
 - **Commit:** `67230d5`
@@ -226,7 +226,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 - **Alternative Methods**
   - Use GGUF formatted model instead of FP16 which will occupy less memory.
 
-## Decision 12: One LLM call per note for the local model
+## Decision 11: One LLM call per note for the local model
 
 - **Date/time:** 11-Nov-2026, 23:35 IST
 - **Commit:** `67230d5`
@@ -251,13 +251,13 @@ The medical aware embedding model is working much better with 0 retrieval failur
 
   **Observation:** This is 8.8 points below Decision 09 (31.7 / 75, top-3 .567). The single-call change lowers ranking accuracy on dev, so it is a regression on score. Whether the latency gain justifies it is still open, because latency was not recorded for this run. It took ~32 min to run for 60 notes, so for 300 notes, it is going to take 160min which is more than our time. This can be trade-off by increasing threads. but still it is going to tak e ~80min for this task, so this is a backup. 
 
-## Decision 13: Diagnosing the LLM rerank on top of the hybrid retriever
+## Decision 12: Diagnosing the LLM rerank on top of the hybrid retriever
 
 - **Date/time:** 12-Nov-2026, 02:00 IST
 - **Commit:** `67230d5`
 - **Decision:** `misc/diagnose.py` gets `--llm-run`, which scores an LLM rerank run against the same 30-code hybrid pool that `src/coder.py` reranks. Each note is classified as kept, rescued, harmed, pool-miss or outside-pool. The earlier diagnostic only measured retriever recall and never read the LLM's picks.
 - **Reasoning:**
-  - Decision 12's LLM score (22.9 / 75) is below the hybrid retriever alone (31.7 / 75), but the score does not say whether the LLM or the retriever is at fault. The split by note shows which.
+  - Decision 11's LLM score (22.9 / 75) is below the hybrid retriever alone (31.7 / 75), but the score does not say whether the LLM or the retriever is at fault. The split by note shows which.
   - The pool and top-3 are rebuilt with `CANDIDATES` and `MAX_NOTE_CHARS` imported from `src/coder.py`, so the diagnostic cannot drift from the coder.
 
 - **Command:** `uv run --offline python -m misc.diagnose --hybrid --llm-run predictions\llm_run.jsonl` (60 dev notes, SapBERT, `predictions\llm_run.jsonl`)
@@ -293,13 +293,13 @@ The medical aware embedding model is working much better with 0 retrieval failur
   - Keep the retriever's top-1 unless the LLM is confident.
   - Use a larger model. This is not measured yet. (openAI or Anthropic API)
 
-## Decision 14: OpenAI gpt-4o-mini rerank on top of the hybrid retriever
+## Decision 13: OpenAI gpt-4o-mini rerank on top of the hybrid retriever
 
 - **Date/time:** 12-Nov-2026, 10:31 IST
 - **Commit:** `680c64b`
-- **Decision:** Use the OpenAI API with `gpt-4o-mini` as the reranker on top of the hybrid retriever (SapBERT embeddings with RRF fusion, assessment extraction and chapter prior). The LLM chooses the final codes from the hybrid candidate pool, and the retriever supplies the candidates. The run uses `--api` with `OPENAI_API_KEY` set, instead of the local Qwen model from Decisions 11 to 13.
+- **Decision:** Use the OpenAI API with `gpt-4o-mini` as the reranker on top of the hybrid retriever (SapBERT embeddings with RRF fusion, assessment extraction and chapter prior). The LLM chooses the final codes from the hybrid candidate pool, and the retriever supplies the candidates. The run uses `--api` with `OPENAI_API_KEY` set, instead of the local Qwen model from Decisions 10 to 12.
 - **Reasoning:**
-  - The local Qwen rerank was slow on CPU (about 32 min for 60 notes) and lowered the score (Decisions 12 and 13). Its misses were mainly reranking errors, since gold was in the pool for 58/60 notes.
+  - The local Qwen rerank was slow on CPU (about 32 min for 60 notes) and lowered the score (Decisions 11 and 12). Its misses were mainly reranking errors, since gold was in the pool for 58/60 notes.
   - A hosted, larger model should handle the ranking step better than a 1.5B local model, at a small per-note API cost.
 
 - **Results (60 dev notes, hybrid retriever + `gpt-4o-mini` rerank, official `score.py`):**
@@ -317,10 +317,10 @@ The medical aware embedding model is working much better with 0 retrieval failur
 | Run | Top-1 | Top-3 | Score |
 |---|---|---|---|
 | Hybrid retriever only (Decision 09) | .350 | .567 | 31.7 / 75 |
-| Local Qwen2.5-1.5B rerank (Decision 12) | .233 | .450 | 22.9 / 75 |
+| Local Qwen2.5-1.5B rerank (Decision 11) | .233 | .450 | 22.9 / 75 |
 | **Hybrid + gpt-4o-mini rerank (this run)** | **.567** | **.850** | **49.6 / 75** |
 
-- **Observation:** The score rises by 17.9 points over the retriever alone and 26.7 points over the local LLM. Top-3 rises from .567 to .850, so the ranking failures that were the main problem in Decision 08 and Decision 13 are largely fixed by a stronger reranker. Retrieval is unchanged, so the pool ceiling still applies (hybrid R@30 .967 in Decision 13). Notes with the right disease family but the wrong specificity remain a likely source of the remaining misses. It had changed 95% of the top-3 output codes.
+- **Observation:** The score rises by 17.9 points over the retriever alone and 26.7 points over the local LLM. Top-3 rises from .567 to .850, so the ranking failures that were the main problem in Decision 08 and Decision 12 are largely fixed by a stronger reranker. Retrieval is unchanged, so the pool ceiling still applies (hybrid R@30 .967 in Decision 12). Notes with the right disease family but the wrong specificity remain a likely source of the remaining misses. It had changed 95% of the top-3 output codes.
 
 - **Limits:**
   - Measured on the 60 dev notes only. The hidden set may cover chapters and styles not in dev, so this is not a generalisation claim.
@@ -331,7 +331,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
   - OpenAI API (`gpt4.1-mini`) as the option
   - Anthropic API (`claude-haiku-4-5` is the default fallback in `src\coder.py`). Not measured.
 
-## Decision 15: Use OpenAI gpt-4.1-mini for reranking
+## Decision 14: Use OpenAI gpt-4.1-mini for reranking
 
 - **Date/time:** 12-Nov-2026, 11:11 IST
 - **Commit:** `37a6c3f` (50-candidate follow-up: `6be59de`)
@@ -371,7 +371,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
   - prompt engineering by using fewshot, CoT
   - using a larger model than gpt-4.1-mini
 
-## Decision 16: Few-shot (3 demostrations) + CoT for better task understanding
+## Decision 15: Few-shot (3 demostrations) + CoT for better task understanding
 
 - **Date/time:** 12-Nov-2026, between 12:30 IST
 - **Commit:** `acc9202` (few-shot prediction files were committed with the multilingual change)
@@ -382,7 +382,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
   - using a larger model than gpt-4.1-mini
 
 
-## Decision 17: Using the multi-lingual embedding model
+## Decision 16: Using the multi-lingual embedding model
 
 - **Date/time:** 12-Nov-2026, 13:23 IST
 - **Commit:** `acc9202`
@@ -426,7 +426,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 - **Alternative Considered :**
   - use the tree hierarchy knowledge
 
-## Decision 18 : Use the tree hierarchy knowledge for better re-ranking
+## Decision 17: Use the tree hierarchy knowledge for better re-ranking
 
 - **Date/time:** 12-Nov-2026, 15:21 IST
 - **Commit:** `7dc0391`
@@ -466,14 +466,14 @@ The medical aware embedding model is working much better with 0 retrieval failur
   - Improve retrieval recall for the category the LLM names, so the right leaf is in the candidate list before reranking.
 
 - **Alternatives Considered :**
-  - Larger model without changing the prompt (Decision 16 showed prompt changes alone did not help).
+  - Larger model without changing the prompt (Decision 15 showed prompt changes alone did not help).
 
-## Decision 19: Trying gpt-5.4-mini as the reranker
+## Decision 18: Trying gpt-5.4-mini as the reranker
 
 - **Date/time:** 12-Nov-2026, 15:50 IST
 - **Commit:** `7dc0391`
 
-- **Change:** Same pipeline as Decision 18 (hybrid retriever, recall fallback, specific-child rule, `category` in output), with the OpenAI reranker switched to `gpt-5.4-mini`. Predictions: `predictions/llm_run_stage5_post_5.4.jsonl`.
+- **Change:** Same pipeline as Decision 17 (hybrid retriever, recall fallback, specific-child rule, `category` in output), with the OpenAI reranker switched to `gpt-5.4-mini`. Predictions: `predictions/llm_run_stage5_post_5.4.jsonl`.
 
 - **Results (60 notes), official `score.py`:**
   - Slice A (n=60)
@@ -485,9 +485,9 @@ The medical aware embedding model is working much better with 0 retrieval failur
   - Duplicate IDs: 0
   - **Score: 58.7 / 75**
 
-- **Comparison with gpt-4.1-mini (Decision 18, 59.2 / 75):**
+- **Comparison with gpt-4.1-mini (Decision 17, 59.2 / 75):**
   - Top-1 fell from 0.767 to 0.733, so the score is about the same, but top-3 rose from 0.833 to 0.883.
-  - The score gap (0.5 points) is smaller than the run-to-run spread measured in Decision 18 (about 4 points), so this is not a measured improvement.
+  - The score gap (0.5 points) is smaller than the run-to-run spread measured in Decision 17 (about 4 points), so this is not a measured improvement.
 
 - **Observation:**
   - A stronger or newer model did not fix top-1. The model finds the right code in its top 3 more often, but it does not put the right code first.
@@ -497,13 +497,13 @@ The medical aware embedding model is working much better with 0 retrieval failur
 - **Methodology change needed:**
   - Measure each configuration as a mean over several seeded runs (at least 3), and report the spread, not a single score.
   - Evaluate the top-1 misses separately (wrong category, wrong specificity, residual vs named child) before trying another model.
-  - Use a larger dev set or the 30-note folds from Decision 18 with paired comparisons, so small differences are tested rather than read from one run.
+  - Use a larger dev set or the 30-note folds from Decision 17 with paired comparisons, so small differences are tested rather than read from one run.
   - Keep the score as the headline, but judge a change only if it beats the run-to-run spread of the baseline.
 
 - **Alternatives Considered :**
   - Swapping in a larger model without changing the method (this is what this decision did; it did not separate the models).
 
-## Decision 20: Self-consistency and residual-vs-named prompt rule for the Stage 5 rerank
+## Decision 19: Self-consistency and residual-vs-named prompt rule for the Stage 5 rerank
 
 - **Date/time:** 12-Nov-2026, 16:05 IST
 - **Commit:** `fe3ae34`
@@ -512,7 +512,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
   - Self-consistency: the code supports a majority vote over `SELF_CONSISTENCY_SAMPLES` rerank passes (first pass greedy, `temperature=0`, `seed=0`; the rest sample at `SAMPLE_TEMPERATURE = 0.7`). The default is set to `1` (greedy only), because the 3-sample vote costs about 3x the LLM spend and did not beat greedy on its own (see results).
   - Prompt step 5: a named child code needs its feature stated in the note. When the note gives only the general diagnosis, the `.Z` code is correct even if a named child also fits.
 
-- **Error analysis (Decision 18 run, 14 top-1 misses, `misc/llm_run_stage5_post_per_note.jsonl`):**
+- **Error analysis (Decision 17 run, 14 top-1 misses, `misc/llm_run_stage5_post_per_note.jsonl`):**
   - Residual vs named child: 8 (gold is `.Z`, the pick is a named leaf or a different `.Z`). Gold was in the 30-candidate pool in all 8, so this is a ranking problem.
   - Wrong category: 6. The gold category was not in the retriever pool for any of them, so only the recall fallback can help, and it helps only when the LLM names the right category.
   - Wrong leaf within the right category: 1 (`CA40.Z` vs `CA40.0Z`).
@@ -534,7 +534,7 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 - **Observation:**
   - The residual prompt fixed 3 of the 8 residual misses (dev-014, dev-022, dev-023) and broke 2 top-3 hits (dev-007 now picks `CA40.0Z`, dev-057 picks `5A00.Z`).
   - Self-consistency alone did not help. Most votes agree with the greedy pass, and it costs about 3× the LLM spend ($0.26 vs $0.08 per 60-note run).
-  - The total gain (+1.3 points) is about one note in top-1 and is inside the run-to-run spread from Decision 18 (about 4 points). It is not a measured improvement yet.
+  - The total gain (+1.3 points) is about one note in top-1 and is inside the run-to-run spread from Decision 17 (about 4 points). It is not a measured improvement yet.
 
 - **Next steps:**
   - Repeat the baseline and the combined config over at least 3 runs each before keeping the change.
@@ -545,7 +545,7 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 - **Alternatives Considered :**
   - Self-consistency with temperature 0 only: rejected, because identical greedy calls give identical votes.
 
-## Decision 21: Diagnosing the top-3 misses before the next change
+## Decision 20: Diagnosing the top-3 misses before the next change
 
 - **Date/time:** 12-Nov-2026, 16:30 IST
 - **Commit:** `d488306`
@@ -573,7 +573,7 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
   - The gold is in the pool for 2 of the 8: dev-033 (`FA25.2Z` at rank 6) and dev-057 (`5A00.2Z` at rank 14). These are specificity misses.
   - Correction: my first table above has the wrong-category label for dev-051, dev-056 and dev-060 as a reranking problem. The gold is absent from the pool for those notes, so it is a retrieval problem.
 
-- **Cause found in the code:** `specific_code` in `src/coder.py` turned a non-leaf pick into its best-ranked named child in pool order, before trying the unspecified `.Z` child. Decision 18 documents the rule as "a non-leaf pick becomes `<parent>.Z`". The code did not follow that rule.
+- **Cause found in the code:** `specific_code` in `src/coder.py` turned a non-leaf pick into its best-ranked named child in pool order, before trying the unspecified `.Z` child. Decision 17 documents the rule as "a non-leaf pick becomes `<parent>.Z`". The code did not follow that rule.
 
 - **Change:** `specific_code` now returns the `.Z` child for a non-leaf pick, and falls back to the best-ranked named child only when no `.Z` child exists. Nothing else changed.
 
@@ -584,7 +584,7 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 | Fixed rule, run 1 | 0.883 | 0.883 | 66.2 / 75 |
 | Fixed rule, run 2 | 0.850 | 0.867 | 64.2 / 75 |
 | Fixed rule, run 3 | 0.900 | 0.900 | 67.5 / 75 |
-| Previous shipped config, reruns 1 and 2 (Decision 20) | 0.800 / 0.833 | 0.850 / 0.867 | 61.2 / 63.3 |
+| Previous shipped config, reruns 1 and 2 (Decision 19) | 0.800 / 0.833 | 0.850 / 0.867 | 61.2 / 63.3 |
 
   - Mean of the three fixed runs: 66.0 / 75 (top-1 0.878, top-3 0.883), against 62.3 for the previous config.
   - Cost: about $0.08 per 60-note run.
@@ -613,12 +613,12 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
   - **Slice A (60 dev notes, `score.py`):** top-1 0.867 (52/60), top-3 0.867 (52/60), **Score: 65.0 / 75**. Validation: 60 notes, 0 missing predictions, 0 invalid codes, 0 duplicate ids.
   - Comparison: 65.0 is within the spread of the three fixed-rule runs above (64.2 to 67.5, mean 66.0). Top-3 of 0.867 is below the 0.900 of the best fixed run.
 
-## Decision 22: Term extraction and abbreviation expansion for the vocabulary misses
+## Decision 21: Term extraction and abbreviation expansion for the vocabulary misses
 
 - **Date/time:** 12-Nov-2026, 17:03 IST
 - **Commit:** `92fff75`
 
-- **Context:** Decision 21 found that the gold code is missing from the 30-candidate pool for 6 of the 8 top-3 misses (dev-002, dev-008, dev-028, dev-051, dev-056, dev-060). Reranking cannot fix these, so the fix must be in retrieval. The causes are shorthand in the note (for example GORD, SAM, URTI) and lay or paraphrased terms that do not match catalogue titles.
+- **Context:** Decision 20 found that the gold code is missing from the 30-candidate pool for 6 of the 8 top-3 misses (dev-002, dev-008, dev-028, dev-051, dev-056, dev-060). Reranking cannot fix these, so the fix must be in retrieval. The causes are shorthand in the note (for example GORD, SAM, URTI) and lay or paraphrased terms that do not match catalogue titles.
 
 - **Change (generic, no note-specific text in prompts):**
   1. **Term extraction (plan Stage 1B):** one short LLM call per note (`extract_terms`, prompt `TERMS_SYSTEM`) returns up to 4 English clinical diagnosis terms, spelled out, with lay words translated. The terms lead the retrieval query. If the call fails, the note gets no terms. Controlled by `TERM_EXTRACTION`.
@@ -633,7 +633,7 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 | Term extraction + abbreviations, run 1 | 0.917 | 0.967 | 70.0 / 75 |
 | Term extraction + abbreviations, run 2 | 0.933 | 0.967 | 70.8 / 75 |
 | Term extraction + abbreviations, run 3 | 0.933 | 0.967 | 70.8 / 75 |
-| Fixed rule only, mean of 3 runs (Decision 21) | 0.878 | 0.883 | 66.0 / 75 |
+| Fixed rule only, mean of 3 runs (Decision 20) | 0.878 | 0.883 | 66.0 / 75 |
 
   - Mean of the 3 term-extraction runs: 70.5 / 75 (top-1 0.928, top-3 0.967), up from 66.0.
   - Top-3 misses are the same in all 3 runs: dev-002 (gold CA00, CA07.0; predicted 1E1Z, 1D86, 1D4Z) and dev-051 (gold 5B52; predicted MG29.01/MG29.3/CB01, or MG29.3/CB01/EH40.3 in run 2). These are the 2 notes that remain.
@@ -646,10 +646,10 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 
 
 
-## Decision 23: Synthetic evaluation set for generalisation
+## Decision 22: Synthetic evaluation set for generalisation
 
 - **Date/time:** 12-Nov-2026, 17:32 IST
-- **Commit:** the commit that adds `data/synthetic/synthetic_eval.jsonl` and the README scores (hash to be recorded when committed)
+- **Commit:** `b8db592` (adds `data/synthetic/synthetic_eval.jsonl` and the README synthetic scores)
 
 - **Context:** The dev set is 60 notes, all used for tuning, and it covers a narrow set of chapters and styles. The brief scores 25 of 100 points on a different distribution, so dev alone says little about generalisation.
 
@@ -674,10 +674,10 @@ Rerun 2 cost $0.0847 in LLM spend, the same as rerun 1.
 
 - **Revisit:** have a clinician check the gold codes; add chapters with few dev notes; report the 30 non-English notes separately; record the model and settings for every LLM run.
 
-## Decision 24: Packaging for the grader (Docker image, offline run, docs)
+## Decision 23: Packaging for the grader (Docker image, offline run, docs)
 
 - **Date/time:** 12-Nov-2026, 17:53 IST
-- **Commit:** `fca8ca0` (Docker packaging), `8a82f06` (comment cleanup), `4f35028` (README, DECISIONs, .gitignore)
+- **Commit:** `fca8ca0` (Docker packaging), `8a82f06` (comment cleanup), `4f35028` (README, DECISIONS, .gitignore)
 
 - **Context:** The run must work from a clean clone with `docker compose run coder /in/notes.jsonl /out/predictions.jsonl`, with no network except the model APIs, and BioLORD-2023-M cannot be downloaded at run time.
 
