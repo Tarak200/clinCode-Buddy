@@ -49,7 +49,7 @@ python score.py --gold 'data/dev_notes.jsonl' \
 
 <!-- python -m src.coder 'data/dev_notes.jsonl' 'predictions/llm_run.jsonl'
 
-python score.py --gold 'data\dev_notes.jsonl' --pred 'predictions\llm_run.jsonl' --mms 'data\mms-2026-01.json' --per-note 'misc/llm_run_per_note.jsonl' -->
+python score.py --gold 'data\dev_notes.jsonl' --pred 'predictions\llm_run_4.1_mini.jsonl' --mms 'data\mms-2026-01.json' --per-note 'misc/llm_run_4.1_mini_per_note.jsonl' -->
 
 
 ### Advanced Options

@@ -2,18 +2,16 @@
 
 The RRF retriever fetches candidates and writes a complete retriever-only prediction file first.
 Then one LLM call per note picks up to 3 codes from those candidates, given the assessment
-text and a note excerpt. The LLM is OpenAI if OPENAI_API_KEY is set, else Anthropic if
-ANTHROPIC_API_KEY is set, else the local Qwen2.5-0.5B GGUF model run by llama.cpp. Any LLM
-problem keeps the retriever ranking for that note.
+text and a note excerpt. The LLM is Anthropic if ANTHROPIC_API_KEY is set, else OpenAI if
+OPENAI_API_KEY is set. If neither key is set, the hybrid retriever is used without an LLM.
+Any LLM problem keeps the retriever ranking for that note.
 
 Flags:
   --hybrid  retriever (RRF) only, no LLM is loaded or called
-  --api     use the OpenAI/Anthropic API; fails if neither key is set
+  --api     use the Anthropic/OpenAI API; fails if neither key is set
 
 Environment:
-  LOCAL_GGUF_PATH       local GGUF file (skips the Hugging Face download)
   EMBEDDING_MODEL_PATH  local sentence-transformers directory for the retriever
-  LLM_THREADS           llama.cpp thread count (default: usable CPU cores)
 """
 
 import argparse
@@ -56,22 +54,6 @@ PRICES = {
     "claude-haiku-4-5": (1.00, 5.00),
 }
 DEFAULT_MODELS = {"openai": "gpt-4.1-mini", "anthropic": "claude-haiku-4-5"}
-# Local model: quantized GGUF run by llama.cpp; the file is downloaded once into LOCAL_MODEL_CACHE
-LOCAL_MODEL_REPO = "Qwen/Qwen2.5-1.5B-Instruct-GGUF"
-LOCAL_MODEL_FILE = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
-LOCAL_MODEL_CACHE = Path(__file__).resolve().parent.parent / "data" / ".model_cache"
-LOCAL_CTX = 4096  # prompt (excerpt + candidates) plus answer must fit in this window
-
-
-def local_threads() -> int:
-    """Threads for llama.cpp: LLM_THREADS if set, else the CPU cores this process may use."""
-    override = os.environ.get("LLM_THREADS")
-    if override:
-        return int(override)
-    try:
-        return len(os.sched_getaffinity(0))  # respects container CPU limits (Linux)
-    except AttributeError:  # Windows and macOS have no affinity mask
-        return os.cpu_count() or 1
 
 RERANK_SYSTEM = """You are an ICD-11 coding assistant. Given a clinical note and a numbered candidate list, choose the best-matching candidates.
 
@@ -116,51 +98,21 @@ def picks_schema(candidate_count: int) -> dict:
     }
 
 
-class LocalModel:
-    """One llama.cpp model. llama.cpp is not thread-safe, so requests take turns."""
-
-    def __init__(self, llama) -> None:
-        self.llama = llama
-        self._lock = threading.Lock()
-
-    def submit(self, system: str, user: str, max_tokens: int, schema: dict | None = None) -> tuple[str, int, int]:
-        from llama_cpp import LlamaGrammar
-
-        # The grammar makes the output match the schema, so the model cannot loop or pick an invalid number
-        grammar = LlamaGrammar.from_json_schema(json.dumps(schema)) if schema else None
-        with self._lock:
-            response = self.llama.create_chat_completion(
-                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-                max_tokens=max_tokens,
-                temperature=0,
-                grammar=grammar,
-            )
-        usage = response["usage"]
-        return response["choices"][0]["message"]["content"] or "", usage["prompt_tokens"], usage["completion_tokens"]
-
-
 class LLM:
     """Small JSON-in/JSON-out wrapper over the OpenAI or Anthropic SDK with a cost cap."""
 
     def __init__(self, provider: str, client, model: str) -> None:
         self.provider = provider
-        self.client = client  # SDK client, or LocalModel for "local"
+        self.client = client
         self.model = model
         self.spent = 0.0
         self._lock = threading.Lock()
 
     def _price(self, tokens_in: int, tokens_out: int) -> float:
-        if self.provider == "local":
-            return 0.0
         price_in, price_out = PRICES.get(self.model, (1.0, 5.0))  # unknown model: assume dear
         return (tokens_in * price_in + tokens_out * price_out) / 1_000_000
 
-    def _call_local(self, system: str, user: str, max_tokens: int, schema: dict | None) -> tuple[str, int, int]:
-        return self.client.submit(system, user, max_tokens, schema)
-
     def _call(self, system: str, user: str, max_tokens: int, schema: dict | None = None) -> tuple[str, int, int]:
-        if self.provider == "local":
-            return self._call_local(system, user, max_tokens, schema)
         if self.provider == "openai":
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -228,22 +180,9 @@ def load_env(path: Path) -> None:
                 os.environ.setdefault(key.strip(), value)
 
 
-def make_llm(allow_local: bool = True) -> LLM | None:
-    """Use OpenAI if its key is set, else Anthropic, else the local Qwen model.
-
-    A missing API library or key moves on to the next option instead of giving up.
-    With allow_local=False (--api), the local model is never loaded.
-    """
+def make_llm() -> LLM | None:
+    """Use Anthropic first, then OpenAI; return None if neither API is available."""
     model_override = os.environ.get("LLM_MODEL")
-    if os.environ.get("OPENAI_API_KEY"):
-        try:
-            from openai import OpenAI
-
-            client = OpenAI(timeout=CALL_TIMEOUT_S, max_retries=0)  # honours HTTPS_PROXY
-            model = model_override if model_override and not model_override.startswith("claude") else DEFAULT_MODELS["openai"]
-            return LLM("openai", client, model)
-        except ImportError as error:
-            print(f"openai library missing ({error}); trying next LLM", file=sys.stderr)
     if os.environ.get("ANTHROPIC_API_KEY"):
         try:
             from anthropic import Anthropic
@@ -253,26 +192,15 @@ def make_llm(allow_local: bool = True) -> LLM | None:
             return LLM("anthropic", client, model)
         except ImportError as error:
             print(f"anthropic library missing ({error}); trying next LLM", file=sys.stderr)
-    if not allow_local:
-        return None
-    try:
-        from llama_cpp import Llama
+    if os.environ.get("OPENAI_API_KEY"):
+        try:
+            from openai import OpenAI
 
-        # LOCAL_GGUF_PATH lets the Docker image load a baked-in model with no network
-        model_path = os.environ.get("LOCAL_GGUF_PATH")
-        if not model_path:
-            from huggingface_hub import hf_hub_download
-
-            model_path = hf_hub_download(LOCAL_MODEL_REPO, LOCAL_MODEL_FILE, cache_dir=str(LOCAL_MODEL_CACHE))
-        llama = Llama(
-            model_path=model_path,
-            n_ctx=LOCAL_CTX,
-            n_threads=local_threads(),
-            verbose=False,
-        )
-        return LLM("local", LocalModel(llama), LOCAL_MODEL_FILE)
-    except Exception as error:  # missing libraries, download or load failures: use the retriever alone
-        print(f"local LLM unavailable ({error}); using retriever only", file=sys.stderr)
+            client = OpenAI(timeout=CALL_TIMEOUT_S, max_retries=0)  # honours HTTPS_PROXY
+            model = model_override if model_override and not model_override.startswith("claude") else DEFAULT_MODELS["openai"]
+            return LLM("openai", client, model)
+        except ImportError as error:
+            print(f"openai library missing ({error}); using the hybrid retriever", file=sys.stderr)
     return None
 
 
@@ -358,17 +286,16 @@ def run(
     if len(set(paths)) != len(paths):
         raise ValueError("Input, output, and catalogue paths must differ")
 
-    # No API key and no local model available -> llm is None and the RRF retriever alone is used
     load_env(Path(__file__).resolve().parent.parent / ".env")
-    llm = None if hybrid else make_llm(allow_local=not api)
+    llm = None if hybrid else make_llm()
     if api and not hybrid and llm is None:
-        raise ValueError("--api needs OPENAI_API_KEY or ANTHROPIC_API_KEY (set in the environment or .env)")
+        raise ValueError("--api needs a usable Anthropic or OpenAI API key (set in the environment or .env)")
     if hybrid:
         print("Hybrid mode: retriever only, no LLM", file=sys.stderr)
     elif llm:
         print(f"Using {llm.provider} model {llm.model} on top of the retriever", file=sys.stderr)
     else:
-        print("No LLM key found; using the retriever only", file=sys.stderr)
+        print("No API LLM available; using the hybrid retriever only", file=sys.stderr)
     with catalogue_path.open(encoding="utf-8") as file:
         valid = {record["code"]: record["title"] for record in json.load(file)}
 
@@ -447,9 +374,7 @@ def run(
                 return None, "failed"
 
         jobs = [(note_id, text, candidates) for (note_id, text), candidates in zip(notes, candidates_per_note)]
-        # The local llama.cpp model handles one request at a time
-        workers = 1 if llm.provider == "local" else WORKERS
-        with ThreadPoolExecutor(workers) as pool:
+        with ThreadPoolExecutor(WORKERS) as pool:
             # map yields in input order; each reranked note is saved at once
             for position, (codes, outcome) in enumerate(
                 tqdm(pool.map(rerank, jobs), total=len(jobs), desc="Reranking", file=sys.stderr)
@@ -504,7 +429,7 @@ def main() -> None:
     mode.add_argument(
         "--api",
         action="store_true",
-        help="use the OpenAI/Anthropic API; fails if neither OPENAI_API_KEY nor ANTHROPIC_API_KEY is set",
+        help="use the Anthropic/OpenAI API; fails if neither ANTHROPIC_API_KEY nor OPENAI_API_KEY is set",
     )
     args = parser.parse_args()
     try:

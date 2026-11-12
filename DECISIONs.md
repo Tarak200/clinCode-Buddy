@@ -320,7 +320,7 @@ The medical aware embedding model is working much better with 0 retrieval failur
 | Local Qwen2.5-1.5B rerank (Decision 12) | .233 | .450 | 22.9 / 75 |
 | **Hybrid + gpt-4o-mini rerank (this run)** | **.567** | **.850** | **49.6 / 75** |
 
-- **Observation:** The score rises by 17.9 points over the retriever alone and 26.7 points over the local LLM. Top-3 rises from .567 to .850, so the ranking failures that were the main problem in Decision 08 and Decision 13 are largely fixed by a stronger reranker. Retrieval is unchanged, so the pool ceiling still applies (hybrid R@30 .967 in Decision 13). Notes with the right disease family but the wrong specificity remain a likely source of the remaining misses.
+- **Observation:** The score rises by 17.9 points over the retriever alone and 26.7 points over the local LLM. Top-3 rises from .567 to .850, so the ranking failures that were the main problem in Decision 08 and Decision 13 are largely fixed by a stronger reranker. Retrieval is unchanged, so the pool ceiling still applies (hybrid R@30 .967 in Decision 13). Notes with the right disease family but the wrong specificity remain a likely source of the remaining misses. It had changed 95% of the top-3 output codes.
 
 - **Limits:**
   - Measured on the 60 dev notes only. The hidden set may cover chapters and styles not in dev, so this is not a generalisation claim.
@@ -330,7 +330,31 @@ The medical aware embedding model is working much better with 0 retrieval failur
 - **Alternatives considered:**
   - OpenAI API (`gpt4.1-mini`) as the option
   - Anthropic API (`claude-haiku-4-5` is the default fallback in `src\coder.py`). Not measured.
-  
+
+## Decision 15: Use OpenAI gpt-4.1-mini for reranking
+
+- **Date/time:** 12-Nov-2026, 11:11 IST
+- **Commit:** `TBD`
+- **Decision:** Use OpenAI's `gpt-4.1-mini` as the LLM reranker on top of the hybrid retriever.
+- **Results (60 dev notes, official `score.py`):**
+  - Slice A (n=60)
+  - Top-1 accuracy: 0.783
+  - Top-3 accuracy: 0.850
+  - Points: 60.4 / 75
+  - Missing predictions: 0
+  - Invalid codes: 0
+  - Duplicate IDs: 0
+  - **Score: 60.4 / 75**
+- **Comparison:** Top-3 matches the `gpt-4o-mini` run, while top-1 improves from 0.567 to 0.783 and the score rises from 49.6 to 60.4 / 75. It had changed 67% of the retrieved rankings in the top-3
+- **Conclusion:** `gpt-4.1-mini` is the strongest measured reranker so far on the development set. Results are limited to these 60 notes.
+
+- **Improvements needed :**
+ - Had to increase the top-3 accuracy to 1.00 so that they can be reranked to top-1 for better score
+ - To keep the most relevant code in top-1 
+ 
+- **Alternatives Considered :**
+  - using the tree-hierarchy mms-data-2026 of diseases and codes to improve ranking
+  - using a larger model than gpt-4.1-mini
 
 
 
