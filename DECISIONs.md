@@ -348,13 +348,28 @@ The medical aware embedding model is working much better with 0 retrieval failur
 - **Comparison:** Top-3 matches the `gpt-4o-mini` run, while top-1 improves from 0.567 to 0.783 and the score rises from 49.6 to 60.4 / 75. It had changed 67% of the retrieved rankings in the top-3
 - **Conclusion:** `gpt-4.1-mini` is the strongest measured reranker so far on the development set. Results are limited to these 60 notes.
 
+- **Follow-up results (reranking candidate pool increased to 50, 60 dev notes, official `score.py`):**
+  - Slice A (n=60)
+  - Top-1 accuracy: 0.783
+  - Top-3 accuracy: 0.867
+  - Points: 60.8 / 75
+  - Missing predictions: 0
+  - Invalid codes: 0
+  - Duplicate IDs: 0
+  - **Score: 60.8 / 75**
+- **Comparison with the previous `gpt-4.1-mini` run:** Top-1 stayed at 0.783; top-3 increased from 0.850 to 0.867, and the score rose from 60.4 to 60.8 / 75.
+
 - **Improvements needed :**
  - Had to increase the top-3 accuracy to 1.00 so that they can be reranked to top-1 for better score
  - To keep the most relevant code in top-1 
- 
+
 - **Alternatives Considered :**
+  - to increase the candidates being retrieved to 50 - as R@50 is 1.00 
   - using the tree-hierarchy mms-data-2026 of diseases and codes to improve ranking
   - using a larger model than gpt-4.1-mini
+
+
+
 
 
 
