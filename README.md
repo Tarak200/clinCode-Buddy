@@ -47,6 +47,8 @@ Modes: default (LLM if a key is set, otherwise retriever only), `--hybrid` (retr
 
 ## Scores (official `score.py`)
 
+The `predictions/` directory holds the final results of the pipeline: `predictions/llm_run_voc.jsonl` (final predictions) and `predictions/llm_run_voc_per_note.jsonl` (per-note results).
+
 | Setup | Set (scale) | Score | Top-1 | Top-3 |
 |---|---|---|---|---|
 | Retriever only, no key (`--hybrid`) | 60 dev notes, core (of 75) | 29.2 | 0.317 | 0.533 |
